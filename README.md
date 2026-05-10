@@ -6,10 +6,9 @@ Tools for helping runnning local LLMs & related stuff
 
 ## Content
 
-### ollama-service-mac
+### llm-service-mac
 
-Script & HOWTO for creating a configurable system service on a Mac where Ollama has been
-installed usning `homebrew`. 
+A script for running Homebrew-installed `Ollama` and `llama-server` LLM services on a Mac with sane and persistent configuration and service management. See the readme for details.
 
-Not fully tested but seems to work. Built using Claude / Sonnet 4.6 after an Ollama troubleshooting session.
+Not extensively tested but seems to work fine. Built using Claude / Sonnet 4.6 after an Ollama troubleshooting session.
 
