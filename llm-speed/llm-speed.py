@@ -379,6 +379,25 @@ def main():
         help="Request timeout in seconds per iteration (default: no timeout)",
     )
     parser.add_argument(
+        "--warmup",
+        dest="warmup",
+        action="store_true",
+        default=True,
+        help="Run a quick warmup round before benchmarks (default: enabled)",
+    )
+    parser.add_argument(
+        "--no-warmup",
+        dest="warmup",
+        action="store_false",
+        help="Skip the warmup round",
+    )
+    parser.add_argument(
+        "--warmup-tokens",
+        type=int,
+        default=1,
+        help="Maximum tokens for the warmup round (default: 1)",
+    )
+    parser.add_argument(
         "prompts",
         nargs="*",
         help="Prompt strings to test (can be multiple)",
@@ -435,6 +454,15 @@ def main():
 
     # Set the verified model on the client
     client.model = args.model
+
+    # Warmup round (if enabled)
+    if args.warmup:
+        try:
+            print(f"\n[Warmup] Running quick warmup round ({args.warmup_tokens} token(s))...", end=" ", flush=True)
+            client.stream_generate("Hi", max_tokens=args.warmup_tokens)
+            print("done")
+        except Exception:
+            print("skipped (server busy or unavailable)")
 
     # Prompts
     if not args.prompts:

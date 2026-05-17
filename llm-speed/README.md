@@ -9,6 +9,7 @@ A Python script to measure the token generation speed of Ollama, llama.cpp, or o
 - **Non-streaming** mode as a simpler fallback
 - Configurable iterations, max tokens, and request timeout
 - Automatic model discovery and validation
+- **Automatic warmup round** before benchmarks (configurable, enabled by default)
 - Detailed performance metrics:
   - Tokens per second
   - Time per token
@@ -62,6 +63,16 @@ python llm-speed.py --server ollama --model llama2 "Explain machine learning." "
 python llm-speed.py --server omlx --model Qwen3-8B --no-stream
 ```
 
+### Warmup Round
+
+A warmup round runs automatically before benchmarks to cold-start the model.
+Disable it or adjust the token count:
+
+```bash
+python llm-speed.py --server omlx --model Qwen3-8B --no-warmup
+python llm-speed.py --server omlx --model Qwen3-8B --warmup-tokens 4
+```
+
 ### Long-Running Benchmarks (CPU Servers)
 
 For CPU-only servers with slow generation, set a generous timeout:
@@ -98,6 +109,9 @@ python llm-speed.py \
 | `--stream` | (default) | Use streaming API (enables TTFT measurement) |
 | `--no-stream` | | Use non-streaming API (no TTFT) |
 | `--timeout` | none | Request timeout in seconds per iteration |
+| `--warmup` | (default) | Run a warmup round before benchmarks (enabled by default) |
+| `--no-warmup` | | Skip the warmup round |
+| `--warmup-tokens` | `1` | Maximum tokens for the warmup round |
 | `prompts` | (optional) | Prompt strings to test |
 
 Default ports by server type:
@@ -186,6 +200,7 @@ Total measurements: 5
 - Token counts come from the API's `usage` field for accuracy
 - oMLX may not always return usage in streaming mode; a heuristic fallback is used
 - For CPU-only servers, use `--timeout` to avoid request timeouts during slow generation
+- A warmup round runs automatically before benchmarks; disable with `--no-warmup`
 - Results may vary based on system resources and model complexity
 
 ## Interpreting Results
