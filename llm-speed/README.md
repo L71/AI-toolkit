@@ -165,6 +165,8 @@ Average time per token: 7.29 ms
 Average time to first token (TTFT): 0.05s
 Total measurements: 5
 
+  (Token counts are API-reported — exact for this model/server.)
+
   Prompt 1:
     Input: 32 chars (8 tokens)
     Output: 126 tokens
@@ -185,6 +187,17 @@ Total measurements: 5
 - oMLX may not always return usage in streaming mode; a heuristic fallback is used
 - For CPU-only servers, use `--timeout` to avoid request timeouts during slow generation
 - Results may vary based on system resources and model complexity
+
+## Interpreting Results
+
+Token counts and throughput numbers are **approximate** when the API does not
+return usage information (the fallback heuristic is off by ~30-50% for
+non-English text). Even when the API provides usage, different backends may
+report token counts differently.
+
+Use this tool to **compare configuration changes** (e.g. different `--max-tokens`,
+`--iterations`, or server settings) rather than to report absolute performance
+numbers. The relative ranking between configurations is what matters.
 
 ## License
 

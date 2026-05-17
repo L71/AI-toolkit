@@ -36,7 +36,6 @@ class OpenAIClient:
         self.host = host
         self.port = port or SERVER_PORTS.get(server_type, 8000)
         self.base_url = f"http://{host}:{self.port}"
-        self.model = model or "llama2"
         self.label = SERVER_LABELS.get(server_type, server_type)
 
     def _make_request(self, url: str, payload: dict, timeout: Optional[float] = None) -> urllib.request.Request:
@@ -85,48 +84,59 @@ class OpenAIClient:
         prompt_tokens = 0
 
         with urllib.request.urlopen(req, timeout=timeout) as response:
-            # Read the response as a stream of lines (SSE)
-            for raw_line in response:
-                line = raw_line.decode("utf-8").rstrip("\n").rstrip("\r")
-
-                if not line:
-                    # Empty line - skip (SSE delimiter)
-                    continue
-
-                if not line.startswith("data: "):
-                    continue
-
-                data_str = line[6:]  # Strip "data: " prefix
-
-                if data_str.strip() == "[DONE]":
+            # Read the response as a stream of SSE chunks using readline()
+            # so we actually get chunks as they arrive (not blocked until full response).
+            buffer = ""
+            while True:
+                raw_chunk = response.readline()
+                if not raw_chunk:
                     break
+                buffer += raw_chunk.decode("utf-8")
+                # Process complete SSE messages from the buffer.
+                # SSE messages are separated by blank lines (two consecutive newlines).
+                while "\n\n" in buffer:
+                    block, buffer = buffer.split("\n\n", 1)
+                    for raw_line in block.split("\n"):
+                        line = raw_line.rstrip("\r")
 
-                try:
-                    chunk = json.loads(data_str)
-                except json.JSONDecodeError:
-                    continue
+                        if not line:
+                            continue
 
-                # Extract content from delta
-                choices = chunk.get("choices", [])
-                for choice in choices:
-                    delta = choice.get("delta", {})
-                    content = delta.get("content", "")
-                    if content:
-                        output_parts.append(content)
-                        if first_token_time is None:
-                            first_token_time = time.time()
+                        if not line.startswith("data: "):
+                            continue
 
-                # Extract usage from the final chunk (may be a separate chunk with only usage)
-                usage = chunk.get("usage")
-                if usage:
-                    completion_tokens = usage.get("completion_tokens", 0)
-                    prompt_tokens = usage.get("prompt_tokens", 0)
+                        data_str = line[6:]  # Strip "data: " prefix
+
+                        if data_str.strip() == "[DONE]":
+                            break
+
+                        try:
+                            sse_chunk = json.loads(data_str)
+                        except json.JSONDecodeError:
+                            continue
+
+                        # Extract content from delta
+                        choices = sse_chunk.get("choices", [])
+                        for choice in choices:
+                            delta = choice.get("delta", {})
+                            content = delta.get("content", "")
+                            if content:
+                                output_parts.append(content)
+                                if first_token_time is None:
+                                    first_token_time = time.time()
+
+                        # Extract usage from the final chunk (may be a separate chunk with only usage)
+                        usage = sse_chunk.get("usage")
+                        if usage:
+                            completion_tokens = usage.get("completion_tokens", 0)
+                            prompt_tokens = usage.get("prompt_tokens", 0)
 
         elapsed = time.time() - start_time
-        ttft = (first_token_time - start_time) if first_token_time is not None else elapsed
+        ttft = (first_token_time - start_time) if first_token_time is not None else 0.0
         output_text = "".join(output_parts)
 
         # Fallback: if the API didn't return usage, estimate from text
+        tokens_from_api = (completion_tokens != 0 or prompt_tokens != 0)
         if completion_tokens == 0:
             completion_tokens = count_generated_tokens(output_text)
         if prompt_tokens == 0:
@@ -138,6 +148,7 @@ class OpenAIClient:
             "prompt_tokens": prompt_tokens,
             "elapsed": elapsed,
             "ttft": ttft,
+            "tokens_from_api": tokens_from_api,
         }
 
     def list_models(self, timeout: Optional[float] = None) -> list:
@@ -151,7 +162,11 @@ class OpenAIClient:
 
 
 def count_generated_tokens(text: str) -> int:
-    """Estimate token count for text when the API doesn't provide usage stats."""
+    """Estimate token count for text when the API doesn't provide usage stats.
+
+    This is a rough heuristic (off by ~30-50% for non-English text or complex
+    punctuation). The API's own usage field is preferred whenever available.
+    """
     tokens = 1
     for word in text.split():
         tokens += len(word) // 5 + 1
@@ -212,12 +227,14 @@ def measure_generation_speed(
                     input_tokens = result["prompt_tokens"]
                     elapsed = result["elapsed"]
                     ttft = result["ttft"]
+                    tokens_from_api = result.get("tokens_from_api", False)
                 else:
                     result = client.generate(prompt, max_tokens=max_tokens, timeout=timeout)
                     elapsed = time.time() - start_time
                     usage = result.get("usage", {})
                     output_tokens = usage.get("completion_tokens", 0)
                     input_tokens = usage.get("prompt_tokens", 0)
+                    tokens_from_api = (output_tokens != 0 or input_tokens != 0)
                     output_text = result.get("choices", [{}])[0].get("message", {}).get("content", "")
                     ttft = elapsed  # No separate TTFT in non-streaming
 
@@ -255,6 +272,7 @@ def measure_generation_speed(
                 "avg_time_per_token": 1 / avg_tps if avg_tps > 0 else float('inf'),
                 "avg_ttft": avg_ttft,
                 "successful_iterations": successful_iterations,
+                "tokens_from_api": tokens_from_api,
             })
 
     return results
@@ -271,6 +289,10 @@ def print_summary(results: list):
         print("=" * 60 + "\n")
         return
 
+    # Determine whether any results used API-reported token counts
+    all_api = all(r.get("tokens_from_api", False) for r in results)
+    some_api = any(r.get("tokens_from_api", False) for r in results)
+
     avg_tps = sum(r["avg_tokens_per_second"] for r in results) / len(results)
     avg_tpt = sum(r["avg_time_per_token"] for r in results) / len(results)
     avg_ttft = sum(r["avg_ttft"] for r in results) / len(results)
@@ -279,6 +301,13 @@ def print_summary(results: list):
     print(f"Average time per token: {avg_tpt * 1000:.2f} ms")
     print(f"Average time to first token (TTFT): {format_duration(avg_ttft)}")
     print(f"Total measurements: {len(results)}")
+
+    if all_api:
+        print("\n  (Token counts are API-reported — exact for this model/server.)")
+    elif some_api:
+        print("\n  (Some token counts are API-reported, others are estimates.)")
+    else:
+        print("\n  (Token counts are heuristic estimates — not exact.)")
 
     for r in results:
         print(f"\n  Prompt {r['prompt_id']}:")
@@ -345,7 +374,7 @@ def main():
     )
     parser.add_argument(
         "--timeout",
-        type=int,
+        type=float,
         default=None,
         help="Request timeout in seconds per iteration (default: no timeout)",
     )
