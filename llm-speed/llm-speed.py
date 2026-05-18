@@ -37,6 +37,7 @@ class OpenAIClient:
         self.port = port or SERVER_PORTS.get(server_type, 8000)
         self.base_url = f"http://{host}:{self.port}"
         self.label = SERVER_LABELS.get(server_type, server_type)
+        self.model = model
 
     def _make_request(self, url: str, payload: dict, timeout: Optional[float] = None) -> urllib.request.Request:
         data = json.dumps(payload).encode("utf-8")
@@ -82,6 +83,7 @@ class OpenAIClient:
         output_parts = []
         completion_tokens = 0
         prompt_tokens = 0
+        usage_received = False
 
         with urllib.request.urlopen(req, timeout=timeout) as response:
             # Read the response as a stream of SSE chunks using readline()
@@ -128,6 +130,7 @@ class OpenAIClient:
                         # Extract usage from the final chunk (may be a separate chunk with only usage)
                         usage = sse_chunk.get("usage")
                         if usage:
+                            usage_received = True
                             completion_tokens = usage.get("completion_tokens", 0)
                             prompt_tokens = usage.get("prompt_tokens", 0)
 
@@ -136,7 +139,7 @@ class OpenAIClient:
         output_text = "".join(output_parts)
 
         # Fallback: if the API didn't return usage, estimate from text
-        tokens_from_api = (completion_tokens != 0 or prompt_tokens != 0)
+        tokens_from_api = usage_received
         if completion_tokens == 0:
             completion_tokens = count_generated_tokens(output_text)
         if prompt_tokens == 0:
@@ -231,12 +234,12 @@ def measure_generation_speed(
                 else:
                     result = client.generate(prompt, max_tokens=max_tokens, timeout=timeout)
                     elapsed = time.time() - start_time
+                    tokens_from_api = bool(result.get("usage"))
                     usage = result.get("usage", {})
                     output_tokens = usage.get("completion_tokens", 0)
                     input_tokens = usage.get("prompt_tokens", 0)
-                    tokens_from_api = (output_tokens != 0 or input_tokens != 0)
                     output_text = result.get("choices", [{}])[0].get("message", {}).get("content", "")
-                    ttft = elapsed  # No separate TTFT in non-streaming
+                    ttft = None  # No separate TTFT in non-streaming
 
                     # Fallback token estimation
                     if output_tokens == 0:
@@ -245,14 +248,15 @@ def measure_generation_speed(
                         input_tokens = max(1, len(prompt) // 4)
 
                 tokens_per_second = output_tokens / elapsed if elapsed > 0 else 0
-                ttft_str = format_duration(ttft)
+                ttft_str = format_duration(ttft) if ttft is not None else "N/A (non-streaming)"
 
                 print(f"\u2713 {output_tokens} tokens in {format_duration(elapsed)} ({tokens_per_second:.1f} t/s) | TTFT: {ttft_str}")
 
                 total_input_tokens += input_tokens
                 total_output_tokens += output_tokens
                 total_elapsed += elapsed
-                total_ttft += ttft
+                if ttft is not None:
+                    total_ttft += ttft
                 successful_iterations += 1
 
             except Exception as e:
@@ -260,7 +264,7 @@ def measure_generation_speed(
 
         if successful_iterations > 0:
             avg_tps = total_output_tokens / total_elapsed if total_elapsed > 0 else 0
-            avg_ttft = total_ttft / successful_iterations
+            avg_ttft = total_ttft / successful_iterations if ttft is not None else None
 
             results.append({
                 "prompt_id": i,
@@ -295,11 +299,13 @@ def print_summary(results: list):
 
     avg_tps = sum(r["avg_tokens_per_second"] for r in results) / len(results)
     avg_tpt = sum(r["avg_time_per_token"] for r in results) / len(results)
-    avg_ttft = sum(r["avg_ttft"] for r in results) / len(results)
+
+    ttft_values = [r["avg_ttft"] for r in results if r["avg_ttft"] is not None]
+    avg_ttft = sum(ttft_values) / len(ttft_values) if ttft_values else None
 
     print(f"\nAverage tokens per second: {avg_tps:.2f}")
     print(f"Average time per token: {avg_tpt * 1000:.2f} ms")
-    print(f"Average time to first token (TTFT): {format_duration(avg_ttft)}")
+    print(f"Average time to first token (TTFT): {format_duration(avg_ttft) if avg_ttft is not None else 'N/A (non-streaming mode)'}")
     print(f"Total measurements: {len(results)}")
 
     if all_api:
@@ -315,7 +321,7 @@ def print_summary(results: list):
         print(f"    Output: {r['output_tokens']} tokens")
         print(f"    Speed: {r['avg_tokens_per_second']:.2f} t/s")
         print(f"    Time/token: {r['avg_time_per_token'] * 1000:.2f} ms/token")
-        print(f"    TTFT: {format_duration(r['avg_ttft'])}")
+        print(f"    TTFT: {format_duration(r['avg_ttft']) if r['avg_ttft'] is not None else 'N/A (non-streaming mode)'}")
 
     print("=" * 60 + "\n")
 
@@ -459,7 +465,10 @@ def main():
     if args.warmup:
         try:
             print(f"\n[Warmup] Running quick warmup round ({args.warmup_tokens} token(s))...", end=" ", flush=True)
-            client.stream_generate("Hi", max_tokens=args.warmup_tokens)
+            if args.stream:
+                client.stream_generate("Hi", max_tokens=args.warmup_tokens)
+            else:
+                client.generate("Hi", max_tokens=args.warmup_tokens)
             print("done")
         except Exception:
             print("skipped (server busy or unavailable)")
