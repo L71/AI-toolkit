@@ -164,6 +164,26 @@ class OpenAIClient:
             return [m["id"] for m in result.get("data", [])]
 
 
+def print_http_error(e, context: str) -> None:
+    """Print a detailed error message for an HTTP error response."""
+    try:
+        body = e.read().decode("utf-8")
+    except Exception:
+        body = None
+
+    print(f"✗ HTTP {e.code}: {e.reason} ({context})")
+
+    if body:
+        try:
+            data = json.loads(body)
+            msg = data.get("message") or data.get("error", {}).get("message") or str(data)
+        except json.JSONDecodeError:
+            msg = body
+        if len(msg) > 200:
+            msg = msg[:200] + "..."
+        print(f"  {msg}")
+
+
 def count_generated_tokens(text: str) -> int:
     """Estimate token count for text when the API doesn't provide usage stats.
 
@@ -259,6 +279,8 @@ def measure_generation_speed(
                     total_ttft += ttft
                 successful_iterations += 1
 
+            except urllib.error.HTTPError as e:
+                print_http_error(e, f"{client.label} generation")
             except Exception as e:
                 print(f"\u2717 Error: {e}")
 
@@ -427,6 +449,9 @@ def main():
     # Fetch available models (for listing and/or verification)
     try:
         available_models = client.list_models(timeout=10)
+    except urllib.error.HTTPError as e:
+        print_http_error(e, f"listing models on {client.label}")
+        return
     except urllib.error.URLError as e:
         print(f"Error: Could not connect to {client.label} at {client.base_url}")
         print(f"  Make sure the server is running.")
