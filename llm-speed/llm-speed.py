@@ -39,7 +39,7 @@ class OpenAIClient:
         self.label = SERVER_LABELS.get(server_type, server_type)
         self.model = model
 
-    def _make_request(self, url: str, payload: dict, timeout: Optional[float] = None) -> urllib.request.Request:
+    def _make_request(self, url: str, payload: dict) -> urllib.request.Request:
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
             url,
@@ -198,7 +198,11 @@ def count_generated_tokens(text: str) -> int:
 
 def format_duration(seconds: float) -> str:
     """Format seconds into a human-readable duration string."""
-    if seconds < 60:
+    if seconds < 0.01:
+        return f"<10ms"
+    elif seconds < 1:
+        return f"{seconds * 1000:.0f}ms"
+    elif seconds < 60:
         return f"{seconds:.2f}s"
     else:
         minutes = seconds / 60
@@ -237,6 +241,7 @@ def measure_generation_speed(
         total_elapsed = 0.0
         total_ttft = 0.0
         successful_iterations = 0
+        tokens_from_api = False
 
         for iter_num in range(iterations):
             print(f"  Iteration {iter_num + 1}/{iterations}...", end=" ", flush=True)
@@ -250,7 +255,7 @@ def measure_generation_speed(
                     input_tokens = result["prompt_tokens"]
                     elapsed = result["elapsed"]
                     ttft = result["ttft"]
-                    tokens_from_api = result.get("tokens_from_api", False)
+                    tokens_from_api = tokens_from_api or result.get("tokens_from_api", False)
                 else:
                     result = client.generate(prompt, max_tokens=max_tokens, timeout=timeout)
                     elapsed = time.time() - start_time

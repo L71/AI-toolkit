@@ -203,6 +203,20 @@ Total measurements: 5
 - A warmup round runs automatically before benchmarks; disable with `--no-warmup`
 - Results may vary based on system resources and model complexity
 
+### Token Count Heuristic
+
+When the API does not return token usage (e.g. oMLX in streaming mode),
+the script falls back to a rough character-count heuristic: it splits text
+by whitespace and estimates ~1 token per 5 characters of each word. This
+is **not accurate** for:
+
+- Numbers, URLs, or long identifiers (overestimated)
+- Code with symbols and punctuation (overestimated)
+- Non-English text with dense scripts like CJK (underestimated)
+
+Expect errors of 30-50% or more. Always prefer servers/APIs that report
+token counts directly.
+
 ## Interpreting Results
 
 Token counts and throughput numbers are **approximate** when the API does not
