@@ -459,10 +459,10 @@ def main():
     )
 
     parser.add_argument(
-        "--server",
+        "--backend",
         choices=["ollama", "llama-cpp", "omlx"],
         default="ollama",
-        help="Server type (default: ollama)",
+        help="LLM runtime backend (default: ollama)",
     )
     parser.add_argument(
         "--host",
@@ -553,7 +553,7 @@ def main():
         return
 
     client = OpenAIClient(
-        server_type=args.server,
+        server_type=args.backend,
         host=args.host,
         port=args.port,
         model=args.model,
@@ -576,7 +576,7 @@ def main():
 
     if args.model is None:
         if args.json:
-            print(json.dumps({"server": {"type": args.server, "label": client.label, "url": client.base_url}, "models": available_models}))
+            print(json.dumps({"server": {"type": args.backend, "label": client.label, "url": client.base_url}, "models": available_models}))
         elif not available_models:
             print(f"\nNo models loaded on {client.label} at {client.base_url}")
         else:

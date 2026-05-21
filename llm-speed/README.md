@@ -38,15 +38,15 @@ python llm-speed.py
 Specify a server without `--model` to see loaded models:
 
 ```bash
-python llm-speed.py --server ollama
-python llm-speed.py --server omlx
-python llm-speed.py --server llama-cpp
+python llm-speed.py --backend ollama
+python llm-speed.py --backend omlx
+python llm-speed.py --backend llama-cpp
 ```
 
 For JSON output (useful in scripts), combine with `--json`:
 
 ```bash
-python llm-speed.py --server ollama --json
+python llm-speed.py --backend ollama --json
 ```
 
 This outputs `{"server": {...}, "models": ["model1", "model2", ...]}`.
@@ -56,16 +56,16 @@ This outputs `{"server": {...}, "models": ["model1", "model2", ...]}`.
 Specify `--model` to run the benchmark (model is verified before starting):
 
 ```bash
-python llm-speed.py --server omlx --model Qwen3-8B
-python llm-speed.py --server ollama --model llama2
-python llm-speed.py --server llama-cpp --model mistral
+python llm-speed.py --backend omlx --model Qwen3-8B
+python llm-speed.py --backend ollama --model llama2
+python llm-speed.py --backend llama-cpp --model mistral
 ```
 
 ### Custom Prompts
 
 ```bash
-python llm-speed.py --server omlx --model Qwen3-8B "Write a poem about nature." --max-tokens 256
-python llm-speed.py --server ollama --model llama2 "Explain machine learning." "What is AI?" --iterations 5
+python llm-speed.py --backend omlx --model Qwen3-8B "Write a poem about nature." --max-tokens 256
+python llm-speed.py --backend ollama --model llama2 "Explain machine learning." "What is AI?" --iterations 5
 ```
 
 ### Prompt Files
@@ -73,13 +73,13 @@ python llm-speed.py --server ollama --model llama2 "Explain machine learning." "
 Read prompts from a file (one per line, empty lines skipped):
 
 ```bash
-python llm-speed.py --server omlx --model Qwen3-8B --prompt-file prompts.txt
+python llm-speed.py --backend omlx --model Qwen3-8B --prompt-file prompts.txt
 ```
 
 Read from stdin:
 
 ```bash
-cat prompts.txt | python llm-speed.py --server omlx --model Qwen3-8B --prompt-file -
+cat prompts.txt | python llm-speed.py --backend omlx --model Qwen3-8B --prompt-file -
 ```
 
 If the file is missing or unreadable, the tool prints a clear error message instead of crashing.
@@ -89,13 +89,13 @@ If the file is missing or unreadable, the tool prints a clear error message inst
 Output structured JSON for scripting and CI:
 
 ```bash
-python llm-speed.py --server omlx --model Qwen3-8B --json
+python llm-speed.py --backend omlx --model Qwen3-8B --json
 ```
 
 ### Non-Streaming Mode
 
 ```bash
-python llm-speed.py --server omlx --model Qwen3-8B --no-stream
+python llm-speed.py --backend omlx --model Qwen3-8B --no-stream
 ```
 
 ### Warmup Round
@@ -104,8 +104,8 @@ A warmup round runs automatically before benchmarks to cold-start the model.
 Disable it or adjust the token count:
 
 ```bash
-python llm-speed.py --server omlx --model Qwen3-8B --no-warmup
-python llm-speed.py --server omlx --model Qwen3-8B --warmup-tokens 4
+python llm-speed.py --backend omlx --model Qwen3-8B --no-warmup
+python llm-speed.py --backend omlx --model Qwen3-8B --warmup-tokens 4
 ```
 
 ### Long-Running Benchmarks (CPU Servers)
@@ -113,14 +113,14 @@ python llm-speed.py --server omlx --model Qwen3-8B --warmup-tokens 4
 For CPU-only servers with slow generation, set a generous timeout:
 
 ```bash
-python llm-speed.py --server llama-cpp --model llama2 --timeout 600 --iterations 2 --max-tokens 512
+python llm-speed.py --backend llama-cpp --model llama2 --timeout 600 --iterations 2 --max-tokens 512
 ```
 
 ### Full Options
 
 ```bash
 python llm-speed.py \
-  --server omlx \
+  --backend omlx \
   --model Qwen3-8B \
   --host 127.0.0.1 \
   --port 8000 \
@@ -135,7 +135,7 @@ python llm-speed.py \
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--server` | `ollama` | Server type: `ollama`, `llama-cpp`, or `omlx` |
+| `--backend` | `ollama` | LLM runtime backend: `ollama`, `llama-cpp`, or `omlx` |
 | `--host` | `localhost` | Server hostname |
 | `--port` | (auto) | Server port (auto-selected from server type) |
 | `--model` | (omit to list) | Model name (omit to list available models) |
