@@ -23,106 +23,105 @@ A Python script to measure the token generation speed of Ollama, llama.cpp, or o
 
 No dependencies required beyond the standard library. Just ensure you have Python 3.7+ installed.
 
+## Quick Start
+
+Each backend connects to a default port unless you override it with `--port`:
+
+| Backend | Default Port |
+|---------|-------------|
+| Ollama | 11434 |
+| llama.cpp | 8080 |
+| oMLX | 8000 |
+
+**Step 1:** List available models on your server:
+
+```bash
+python llm-speed.py --backend ollama --host 192.168.1.100
+```
+
+**Step 2:** Run a benchmark (uses 5 built-in prompts, 3 iterations, 128 tokens):
+
+```bash
+python llm-speed.py --backend ollama --host 192.168.1.100 --model mistral
+```
+
+**Step 3:** Customize with your own prompt and more tokens:
+
+```bash
+python llm-speed.py --backend ollama --host 192.168.1.100 --model mistral \
+  "Write a poem about the ocean." --max-tokens 256
+```
+
+**Step 4:** Get JSON output for scripting and CI pipelines:
+
+```bash
+python llm-speed.py --backend ollama --host 192.168.1.100 --model mistral --json
+```
+
 ## Usage
 
-### Show Help
+### Customizing Prompts
 
-Running with no arguments prints the help text:
-
-```bash
-python llm-speed.py
-```
-
-### List Available Models
-
-Specify a server without `--model` to see loaded models:
+Pass one or more prompts directly on the command line:
 
 ```bash
-python llm-speed.py --backend ollama
-python llm-speed.py --backend omlx
-python llm-speed.py --backend llama-cpp
+python llm-speed.py --backend ollama --host 192.168.1.100 --model mistral \
+  "Explain machine learning." "What is AI?" --iterations 5
 ```
-
-For JSON output (useful in scripts), combine with `--json`:
-
-```bash
-python llm-speed.py --backend ollama --json
-```
-
-This outputs `{"server": {...}, "models": ["model1", "model2", ...]}`.
-
-### Run a Benchmark
-
-Specify `--model` to run the benchmark (model is verified before starting):
-
-```bash
-python llm-speed.py --backend omlx --model Qwen3-8B
-python llm-speed.py --backend ollama --model llama2
-python llm-speed.py --backend llama-cpp --model mistral
-```
-
-### Custom Prompts
-
-```bash
-python llm-speed.py --backend omlx --model Qwen3-8B "Write a poem about nature." --max-tokens 256
-python llm-speed.py --backend ollama --model llama2 "Explain machine learning." "What is AI?" --iterations 5
-```
-
-### Prompt Files
 
 Read prompts from a file (one per line, empty lines skipped):
 
 ```bash
-python llm-speed.py --backend omlx --model Qwen3-8B --prompt-file prompts.txt
+python llm-speed.py --backend ollama --host 192.168.1.100 --model mistral --prompt-file prompts.txt
 ```
 
 Read from stdin:
 
 ```bash
-cat prompts.txt | python llm-speed.py --backend omlx --model Qwen3-8B --prompt-file -
+cat prompts.txt | python llm-speed.py --backend ollama --host 192.168.1.100 --model mistral --prompt-file -
 ```
 
 If the file is missing or unreadable, the tool prints a clear error message instead of crashing.
 
-### JSON Output
+### Listing Models in JSON
 
-Output structured JSON for scripting and CI:
-
-```bash
-python llm-speed.py --backend omlx --model Qwen3-8B --json
-```
-
-### Non-Streaming Mode
+Combine `--json` without `--model` to get a machine-readable model list:
 
 ```bash
-python llm-speed.py --backend omlx --model Qwen3-8B --no-stream
+python llm-speed.py --backend ollama --host 192.168.1.100 --json
 ```
 
-### Warmup Round
+Outputs `{"server": {...}, "models": ["model1", "model2", ...]}`.
 
-A warmup round runs automatically before benchmarks to cold-start the model.
-Disable it or adjust the token count:
+### Advanced Options
+
+**Non-streaming mode** (no TTFT measurement, simpler fallback):
 
 ```bash
-python llm-speed.py --backend omlx --model Qwen3-8B --no-warmup
-python llm-speed.py --backend omlx --model Qwen3-8B --warmup-tokens 4
+python llm-speed.py --backend ollama --host 192.168.1.100 --model mistral --no-stream
 ```
 
-### Long-Running Benchmarks (CPU Servers)
-
-For CPU-only servers with slow generation, set a generous timeout:
+**Warmup round** (enabled by default to cold-start the model):
 
 ```bash
-python llm-speed.py --backend llama-cpp --model llama2 --timeout 600 --iterations 2 --max-tokens 512
+python llm-speed.py --backend ollama --host 192.168.1.100 --model mistral --no-warmup
+python llm-speed.py --backend ollama --host 192.168.1.100 --model mistral --warmup-tokens 4
 ```
 
-### Full Options
+**Long-running benchmarks** (CPU-only servers with slow generation):
+
+```bash
+python llm-speed.py --backend llama-cpp --host 192.168.1.100 --model mistral \
+  --timeout 600 --iterations 2 --max-tokens 512
+```
+
+**Full options:**
 
 ```bash
 python llm-speed.py \
   --backend omlx \
+  --host 192.168.1.100 \
   --model Qwen3-8B \
-  --host 127.0.0.1 \
   --port 8000 \
   --iterations 5 \
   --max-tokens 256 \
@@ -137,7 +136,7 @@ python llm-speed.py \
 |--------|---------|-------------|
 | `--backend` | `ollama` | LLM runtime backend: `ollama`, `llama-cpp`, or `omlx` |
 | `--host` | `localhost` | Server hostname |
-| `--port` | (auto) | Server port (auto-selected from server type) |
+| `--port` | (auto) | Server port (auto-selected from backend type) |
 | `--model` | (omit to list) | Model name (omit to list available models) |
 | `--iterations` | `3` | Number of times to run each prompt |
 | `--max-tokens` | `128` | Maximum tokens to generate per prompt |
@@ -151,15 +150,7 @@ python llm-speed.py \
 | `--prompt-file` | | Read prompts from file (one per line). Use `-` for stdin. |
 | `prompts` | (built-in set) | Prompt strings to test |
 
-Default ports by server type:
-
-| Server | Port |
-|--------|------|
-| Ollama | 11434 |
-| llama.cpp | 8080 |
-| oMLX | 8000 |
-
-## Server Configuration
+## Backend Configuration
 
 ### Ollama
 
@@ -191,7 +182,7 @@ Default: `http://localhost:8000`
 ============================================================
 Token Generation Speed Measurement
 ============================================================
-Server: Ollama at http://localhost:11434
+Server: Ollama at http://192.168.1.100:11434
 Model: mistral
 Mode: streaming
 Prompts: 5
