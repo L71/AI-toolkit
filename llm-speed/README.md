@@ -10,15 +10,18 @@ A Python script to measure the token generation speed of Ollama, llama.cpp, or o
 - Configurable iterations, max tokens, and request timeout
 - Automatic model discovery and validation
 - **Automatic warmup round** before benchmarks (configurable, enabled by default)
+- **Truncation detection** — warns when output hits `max_tokens` limit
+- **JSON output** for scripting and CI pipelines
+- **Prompt files** and stdin input for complex prompts
 - Detailed performance metrics:
-  - Tokens per second
+  - Generation tokens per second (excludes prompt processing in streaming mode)
   - Time per token
   - Time to first token (TTFT)
-  - Input/output token counts (from API, not heuristics)
+  - Input/output token counts (from API when available)
 
 ## Installation
 
-No dependencies required beyond the standard library. Just ensure you have Python 3.x installed.
+No dependencies required beyond the standard library. Just ensure you have Python 3.7+ installed.
 
 ## Usage
 
@@ -40,6 +43,14 @@ python llm-speed.py --server omlx
 python llm-speed.py --server llama-cpp
 ```
 
+For JSON output (useful in scripts), combine with `--json`:
+
+```bash
+python llm-speed.py --server ollama --json
+```
+
+This outputs `{"server": {...}, "models": ["model1", "model2", ...]}`.
+
 ### Run a Benchmark
 
 Specify `--model` to run the benchmark (model is verified before starting):
@@ -55,6 +66,30 @@ python llm-speed.py --server llama-cpp --model mistral
 ```bash
 python llm-speed.py --server omlx --model Qwen3-8B "Write a poem about nature." --max-tokens 256
 python llm-speed.py --server ollama --model llama2 "Explain machine learning." "What is AI?" --iterations 5
+```
+
+### Prompt Files
+
+Read prompts from a file (one per line, empty lines skipped):
+
+```bash
+python llm-speed.py --server omlx --model Qwen3-8B --prompt-file prompts.txt
+```
+
+Read from stdin:
+
+```bash
+cat prompts.txt | python llm-speed.py --server omlx --model Qwen3-8B --prompt-file -
+```
+
+If the file is missing or unreadable, the tool prints a clear error message instead of crashing.
+
+### JSON Output
+
+Output structured JSON for scripting and CI:
+
+```bash
+python llm-speed.py --server omlx --model Qwen3-8B --json
 ```
 
 ### Non-Streaming Mode
@@ -103,7 +138,7 @@ python llm-speed.py \
 | `--server` | `ollama` | Server type: `ollama`, `llama-cpp`, or `omlx` |
 | `--host` | `localhost` | Server hostname |
 | `--port` | (auto) | Server port (auto-selected from server type) |
-| `--model` | (required) | Model name (omit to list available models) |
+| `--model` | (omit to list) | Model name (omit to list available models) |
 | `--iterations` | `3` | Number of times to run each prompt |
 | `--max-tokens` | `128` | Maximum tokens to generate per prompt |
 | `--stream` | (default) | Use streaming API (enables TTFT measurement) |
@@ -112,7 +147,9 @@ python llm-speed.py \
 | `--warmup` | (default) | Run a warmup round before benchmarks (enabled by default) |
 | `--no-warmup` | | Skip the warmup round |
 | `--warmup-tokens` | `1` | Maximum tokens for the warmup round |
-| `prompts` | (optional) | Prompt strings to test |
+| `--json` | | Output results as JSON (suppresses verbose output) |
+| `--prompt-file` | | Read prompts from file (one per line). Use `-` for stdin. |
+| `prompts` | (built-in set) | Prompt strings to test |
 
 Default ports by server type:
 
@@ -164,9 +201,9 @@ Max tokens per generation: 128
 
 --- Prompt 1/5 ---
 Input length: 32 chars
-  Iteration 1/3 ✓ 42 tokens in 0.31s (135.5 t/s) | TTFT: 0.05s
-  Iteration 2/3 ✓ 42 tokens in 0.29s (144.8 t/s) | TTFT: 0.04s
-  Iteration 3/3 ✓ 42 tokens in 0.32s (131.3 t/s) | TTFT: 0.06s
+  Iteration 1/3... ✓ 42 tok | 161.5 t/s | TTFT: 50ms | Total: 310ms
+  Iteration 2/3... ✓ 42 tok | 165.2 t/s | TTFT: 45ms | Total: 300ms
+  Iteration 3/3... ✓ 42 tok | 158.8 t/s | TTFT: 55ms | Total: 320ms
 
 ...
 
@@ -174,9 +211,9 @@ Input length: 32 chars
 Summary
 ============================================================
 
-Average tokens per second: 137.20
-Average time per token: 7.29 ms
-Average time to first token (TTFT): 0.05s
+Average generation t/s (excludes prompt processing): 161.83
+Average time per token: 6.18 ms
+Average time to first token (TTFT): 50ms
 Total measurements: 5
 
   (Token counts are API-reported — exact for this model/server.)
@@ -184,9 +221,9 @@ Total measurements: 5
   Prompt 1:
     Input: 32 chars (8 tokens)
     Output: 126 tokens
-    Speed: 136.80 t/s
-    Time/token: 7.31 ms/token
-    TTFT: 0.05s
+    Speed: 161.50 t/s
+    Time/token: 6.20 ms/token
+    TTFT: 50ms
 ```
 
 ## Error Handling
@@ -194,18 +231,33 @@ Total measurements: 5
 - **Server unreachable**: Clear error with server name, URL, and connection reason
 - **Model not found**: Error with list of available models on the server
 - **No models loaded**: Informative message about the empty model list
+- **Truncated output**: Warning when generation hits `max_tokens` limit
+- **Missing prompt file**: Clear error if `--prompt-file` points to a nonexistent or unreadable file
 
 ## Notes
 
 - Token counts come from the API's `usage` field for accuracy
 - oMLX may not always return usage in streaming mode; a heuristic fallback is used
+- The tool automatically falls back if a server doesn't support `stream_options`
+- Models with reasoning/thinking content are supported — `content`, `reasoning`, and `reasoning_content` delta fields are all captured for accurate TTFT and output measurement
 - For CPU-only servers, use `--timeout` to avoid request timeouts during slow generation
 - A warmup round runs automatically before benchmarks; disable with `--no-warmup`
 - Results may vary based on system resources and model complexity
 
+### Streaming vs Non-Streaming Throughput
+
+In **streaming mode**, the reported tokens/second measures **pure generation throughput**
+(excluding prompt processing time). The TTFT metric captures prompt processing separately.
+
+In **non-streaming mode**, the reported tokens/second is **overall throughput** (includes
+both prompt processing and generation), since the two cannot be separated without streaming.
+
+When comparing configurations, use the same mode for fairness. Streaming mode provides
+more granular insight into where time is spent.
+
 ### Token Count Heuristic
 
-When the API does not return token usage (e.g. oMLX in streaming mode),
+When the API does not return token usage (e.g. some llama.cpp server builds),
 the script falls back to a rough character-count heuristic: it splits text
 by whitespace and estimates ~1 token per 5 characters of each word. This
 is **not accurate** for:
