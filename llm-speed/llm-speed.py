@@ -537,8 +537,15 @@ def main():
     )
     parser.add_argument(
         "--prompt-file",
+        action="append",
         default=None,
-        help="Read prompts from file (one per line, empty lines skipped). Use '-' for stdin.",
+        help="Read a single prompt from a file (entire file content). Can be specified multiple times.",
+    )
+    parser.add_argument(
+        "--prompt-list",
+        action="append",
+        default=None,
+        help="Read multiple prompts from a file (one per line, empty lines skipped). Can be specified multiple times.",
     )
     parser.add_argument(
         "prompts",
@@ -611,22 +618,39 @@ def main():
             if not args.json:
                 print("skipped (server busy or unavailable)")
 
+    prompts = []
+
     if args.prompt_file:
-        if args.prompt_file == "-":
-            prompts = [line.strip() for line in sys.stdin if line.strip()]
-        else:
+        for f in args.prompt_file:
             try:
-                with open(args.prompt_file) as f:
-                    prompts = [line.strip() for line in f if line.strip()]
+                with open(f) as fh:
+                    prompts.append(fh.read().strip())
             except FileNotFoundError:
-                print(f"Error: prompt file '{args.prompt_file}' not found.")
+                print(f"Error: prompt file '{f}' not found.")
                 return
             except PermissionError:
-                print(f"Error: permission denied reading '{args.prompt_file}'.")
+                print(f"Error: permission denied reading '{f}'.")
                 return
-    elif args.prompts:
-        prompts = args.prompts
-    else:
+
+    if args.prompt_list:
+        for f in args.prompt_list:
+            try:
+                with open(f) as fh:
+                    for line in fh:
+                        line = line.strip()
+                        if line:
+                            prompts.append(line)
+            except FileNotFoundError:
+                print(f"Error: prompt list file '{f}' not found.")
+                return
+            except PermissionError:
+                print(f"Error: permission denied reading '{f}'.")
+                return
+
+    if args.prompts:
+        prompts.extend(args.prompts)
+
+    if not prompts:
         prompts = DEFAULT_PROMPTS
 
     if not prompts:

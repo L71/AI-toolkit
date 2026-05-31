@@ -12,7 +12,7 @@ A Python script to measure the token generation speed of Ollama, llama.cpp, or o
 - **Automatic warmup round** before benchmarks (configurable, enabled by default)
 - **Truncation detection** — warns when output hits `max_tokens` limit
 - **JSON output** for scripting and CI pipelines
-- **Prompt files** and stdin input for complex prompts
+- **Prompt files** for complex prompts (entire files as single prompts, or multi-prompt lists)
 - Detailed performance metrics:
   - Generation tokens per second (excludes prompt processing in streaming mode)
   - Time per token
@@ -69,19 +69,31 @@ python llm-speed.py --backend ollama --host 192.168.1.100 --model mistral \
   "Explain machine learning." "What is AI?" --iterations 5
 ```
 
-Read prompts from a file (one per line, empty lines skipped):
+Read a single prompt from a file (entire file content, one prompt per file):
 
 ```bash
-python llm-speed.py --backend ollama --host 192.168.1.100 --model mistral --prompt-file prompts.txt
+python llm-speed.py --backend ollama --host 192.168.1.100 --model mistral --prompt-file prompt1.txt --prompt-file prompt2.txt
 ```
 
-Read from stdin:
+Read multiple prompts from a file (one per line, empty lines skipped):
 
 ```bash
-cat prompts.txt | python llm-speed.py --backend ollama --host 192.168.1.100 --model mistral --prompt-file -
+python llm-speed.py --backend ollama --host 192.168.1.100 --model mistral --prompt-list prompts.txt
 ```
 
-If the file is missing or unreadable, the tool prints a clear error message instead of crashing.
+Use `--prompt-file` to pass entire source code files as prompts — the full file content becomes a single prompt:
+
+```bash
+python llm-speed.py --backend ollama --model mistral \
+  --prompt-file source1.py \
+  --prompt-file source2.js \
+  --prompt-list prompts.txt \
+  "Explain this code"
+```
+
+Prompts are collected in order: `--prompt-file` files first, then `--prompt-list` files, then CLI prompts. If no prompts are provided, 5 built-in default prompts are used.
+
+If any file is missing or unreadable, the tool prints a clear error with the file path and exits.
 
 ### Listing Models in JSON
 
@@ -127,7 +139,10 @@ python llm-speed.py \
   --max-tokens 256 \
   --stream \
   --timeout 300 \
-  "Your prompt here"
+  --prompt-file source1.py \
+  --prompt-file source2.js \
+  --prompt-list prompts.txt \
+  "Explain this code"
 ```
 
 ## Command Line Options
@@ -147,7 +162,8 @@ python llm-speed.py \
 | `--no-warmup` | | Skip the warmup round |
 | `--warmup-tokens` | `1` | Maximum tokens for the warmup round |
 | `--json` | | Output results as JSON (suppresses verbose output) |
-| `--prompt-file` | | Read prompts from file (one per line). Use `-` for stdin. |
+| `--prompt-file` | | Read a single prompt from a file (entire file content). Can be specified multiple times. |
+| `--prompt-list` | | Read multiple prompts from a file (one per line). Can be specified multiple times. |
 | `prompts` | (built-in set) | Prompt strings to test |
 
 ## Backend Configuration
@@ -223,7 +239,7 @@ Total measurements: 5
 - **Model not found**: Error with list of available models on the server
 - **No models loaded**: Informative message about the empty model list
 - **Truncated output**: Warning when generation hits `max_tokens` limit
-- **Missing prompt file**: Clear error if `--prompt-file` points to a nonexistent or unreadable file
+- **Missing prompt file**: Clear error with file path if `--prompt-file` or `--prompt-list` points to a nonexistent or unreadable file
 
 ## Notes
 
