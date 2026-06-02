@@ -71,6 +71,8 @@ class OpenAIClient:
         completion_tokens = 0
         prompt_tokens = 0
         usage_received = False
+        prompt_timing_ms = 0
+        prompt_exact = False
         finish_reason = None
         done = False
 
@@ -109,6 +111,9 @@ class OpenAIClient:
                         usage_received = True
                         completion_tokens = usage.get("completion_tokens", 0)
                         prompt_tokens = usage.get("prompt_tokens", 0)
+                        prompt_timing_ms = usage.get("prompt_time_ms") or usage.get("prompt_ms", 0)
+                        if prompt_timing_ms and prompt_timing_ms > 0:
+                            prompt_exact = True
 
         elapsed = time.time() - start_time
         ttft = (first_token_time - start_time) if first_token_time is not None else None
@@ -119,6 +124,15 @@ class OpenAIClient:
                 completion_tokens = count_generated_tokens(output_text)
             if prompt_tokens == 0:
                 prompt_tokens = max(1, len(prompt) // 4)
+
+        # Compute actual prompt_time_ms: use API value when available, else estimate from TTFT
+        actual_prompt_time_ms = (prompt_timing_ms if prompt_exact
+                                 else ((ttft * 1000) if ttft is not None and ttft > 0 else None))
+        prompt_speed = (
+            (prompt_tokens / (actual_prompt_time_ms / 1000))
+            if actual_prompt_time_ms and actual_prompt_time_ms > 0
+            else None
+        )
 
         gen_elapsed = (elapsed - ttft) if ttft is not None else elapsed
         gen_elapsed = max(gen_elapsed, 0.001)
@@ -131,6 +145,9 @@ class OpenAIClient:
             "ttft": ttft,
             "generation_elapsed": gen_elapsed,
             "tokens_from_api": usage_received,
+            "prompt_time_ms": actual_prompt_time_ms,
+            "prompt_speed": prompt_speed,
+            "prompt_exact": prompt_exact,
             "finish_reason": finish_reason,
         }
 
@@ -264,8 +281,11 @@ def measure_generation_speed(
         successful = 0
         tokens_from_api = False
         has_ttft = False
+        prompt_exact = True  # True = all iterations had exact API timing (False = at least one was estimated)
         poor_streaming = False
         truncated = False
+        iter_prompt_speeds = []  # per-iteration prompt speeds for proper averaging
+        iter_prompt_exact_flags = []  # per-iteration exactness (True=exact, False=estimated, None=no data)
 
         for iter_num in range(iterations):
             if verbose:
@@ -280,6 +300,8 @@ def measure_generation_speed(
                     elapsed = result["elapsed"]
                     ttft = result["ttft"]
                     gen_elapsed = result["generation_elapsed"]
+                    prompt_time_ms_value = result.get("prompt_time_ms")
+                    streaming_prompt_exact = result.get("prompt_exact", False)
                     tokens_from_api = tokens_from_api or result.get("tokens_from_api", False)
                     if ttft is not None:
                         has_ttft = True
@@ -290,6 +312,7 @@ def measure_generation_speed(
                     usage = result.get("usage", {})
                     output_tokens = usage.get("completion_tokens", 0)
                     input_tokens = usage.get("prompt_tokens", 0)
+                    prompt_time_ms_value = usage.get("prompt_time_ms") or usage.get("prompt_ms", 0)
                     ttft = None
                     gen_elapsed = elapsed
                     if output_tokens == 0:
@@ -313,14 +336,25 @@ def measure_generation_speed(
                 tps_denom = gen_elapsed if (use_streaming and has_ttft and not iter_poor_streaming) else elapsed
                 tps = output_tokens / tps_denom if tps_denom > 0 else 0
 
+                # Determine if this iteration's prompt timing is exact (from API) or estimated (from TTFT)
+                iter_is_exact = (streaming_prompt_exact if use_streaming 
+                                 else bool(prompt_time_ms_value and prompt_time_ms_value > 0))
+                prompt_timer = ""
+                if prompt_time_ms_value and prompt_time_ms_value > 0:
+                    prompt_speed_str = f"{input_tokens / (prompt_time_ms_value / 1000):.1f}"
+                    indicator = " (exact)" if iter_is_exact else " (estimated via TTFT; includes network latency)"
+                    prompt_timer = f" | Prompt: {prompt_speed_str} t/s{indicator}"
+                elif not use_streaming and ttft is None:
+                    prompt_timer = " | Prompt: N/A"
+
                 if verbose:
                     ttft_str = format_duration(ttft) if ttft is not None else "N/A"
-                    trunc_mark = " ⚠ truncated" if finish_reason == "length" else ""
+                    trunc_mark = " \u26a0 truncated" if finish_reason == "length" else ""
                     stream_mark = " (buffered)" if iter_poor_streaming else ""
                     if use_streaming:
-                        print(f"✓ {output_tokens} tok | {tps:.1f} t/s | TTFT: {ttft_str} | Total: {format_duration(elapsed)}{trunc_mark}{stream_mark}")
+                        print(f"\u2713 {output_tokens} tok | {tps:.1f} t/s | TTFT: {ttft_str} | Total: {format_duration(elapsed)}{trunc_mark}{stream_mark}{prompt_timer}")
                     else:
-                        print(f"✓ {output_tokens} tok | {tps:.1f} t/s | Total: {format_duration(elapsed)}{trunc_mark}")
+                        print(f"\u2713 {output_tokens} tok | {tps:.1f} t/s | Total: {format_duration(elapsed)}{trunc_mark}{prompt_timer}")
 
                 total_input_tokens += input_tokens
                 total_output_tokens += output_tokens
@@ -328,6 +362,11 @@ def measure_generation_speed(
                 total_gen_elapsed += gen_elapsed
                 if ttft is not None:
                     total_ttft += ttft
+                # Track per-iteration prompt speed for proper averaging
+                if prompt_time_ms_value and prompt_time_ms_value > 0:
+                    iter_speed = input_tokens / (prompt_time_ms_value / 1000)
+                    iter_prompt_speeds.append(iter_speed)
+                    iter_prompt_exact_flags.append(iter_is_exact)
                 successful += 1
 
             except urllib.error.HTTPError as e:
@@ -341,6 +380,14 @@ def measure_generation_speed(
             tps_denom = total_gen_elapsed if (use_streaming and has_ttft and not poor_streaming) else total_elapsed
             avg_tps = total_output_tokens / tps_denom if tps_denom > 0 else 0
             avg_ttft = total_ttft / successful if has_ttft else None
+            # Compute average prompt speed from per-iteration values
+            if iter_prompt_speeds:
+                prompt_speed = sum(iter_prompt_speeds) / len(iter_prompt_speeds)
+                # prompt_exact is True only if ALL iterations with data had exact API timing
+                prompt_exact = all(iter_prompt_exact_flags)
+            else:
+                prompt_speed = None
+                prompt_exact = False
 
             results.append({
                 "prompt_id": i,
@@ -357,6 +404,10 @@ def measure_generation_speed(
                 "tokens_from_api": tokens_from_api,
                 "truncated": truncated,
                 "poor_streaming": poor_streaming,
+                "prompt_tokens": total_input_tokens,
+                "prompt_time_ms": round((total_input_tokens / (prompt_speed / 1000)) if prompt_speed and prompt_speed > 0 else 0, 2),
+                "avg_prompt_tokens_per_second": round(prompt_speed, 2) if prompt_speed is not None else None,
+                "prompt_exact": prompt_exact,
             })
 
     return results
@@ -397,6 +448,16 @@ def print_summary(results: list, use_streaming: bool):
         print(f"Average time per token: {avg_tpt * 1000:.2f} ms")
     if avg_ttft is not None:
         print(f"Average time to first token (TTFT): {format_duration(avg_ttft)}")
+
+    # Prompt processing speed summary
+    prompt_speed_values = [r["avg_prompt_tokens_per_second"] for r in results if r.get("avg_prompt_tokens_per_second") is not None]
+    results_with_prompt_speed = [r for r in results if r.get("avg_prompt_tokens_per_second") is not None]
+    all_prompt_exact = all(r.get("prompt_exact", False) for r in results_with_prompt_speed) if results_with_prompt_speed else False
+    avg_prompt_speed = float(sum(prompt_speed_values)) / len(prompt_speed_values) if prompt_speed_values else None
+    if avg_prompt_speed is not None:
+        indicator = " (exact from API)" if all_prompt_exact else " (estimated via TTFT; includes network latency)"
+        print(f"Prompt processing speed: {avg_prompt_speed:.2f} t/s{indicator}")
+
     print(f"Total measurements: {len(results)}")
 
     if all_api:
@@ -413,6 +474,9 @@ def print_summary(results: list, use_streaming: bool):
         print(f"    Speed: {r['avg_tokens_per_second']:.2f} t/s")
         if r["avg_time_per_token"] is not None:
             print(f"    Time/token: {r['avg_time_per_token'] * 1000:.2f} ms/token")
+        if r.get("avg_prompt_tokens_per_second") is not None:
+            prompt_exact_indicator = " (exact from API)" if r.get("prompt_exact") else (" (estimated via TTFT)" if use_streaming or r.get("prompt_time_ms") else "")
+            print(f"    Prompt: {r['avg_prompt_tokens_per_second']:.2f} t/s{prompt_exact_indicator}")
         if r["avg_ttft"] is not None:
             print(f"    TTFT: {format_duration(r['avg_ttft'])}")
         if r.get("poor_streaming"):
@@ -431,6 +495,11 @@ def print_json_results(client, results: list, use_streaming: bool, max_tokens: i
     ttft_values = [r["avg_ttft"] for r in results if r["avg_ttft"] is not None]
     avg_ttft = round(sum(ttft_values) / len(ttft_values), 4) if ttft_values else None
 
+    prompt_speed_values = [r["avg_prompt_tokens_per_second"] for r in results if r.get("avg_prompt_tokens_per_second") is not None]
+    results_with_prompt_speed = [r for r in results if r.get("avg_prompt_tokens_per_second") is not None]
+    all_prompt_exact = all(r.get("prompt_exact", False) for r in results_with_prompt_speed) if results_with_prompt_speed else False
+    avg_prompt_speed = round(float(sum(prompt_speed_values)) / len(prompt_speed_values), 2) if prompt_speed_values else None
+
     output = {
         "server": {
             "type": client.server_type,
@@ -448,6 +517,8 @@ def print_json_results(client, results: list, use_streaming: bool, max_tokens: i
             "avg_ttft": avg_ttft,
             "tokens_from_api": all(r.get("tokens_from_api", False) for r in results) if results else None,
             "total_measurements": len(results),
+            "avg_prompt_tokens_per_second": avg_prompt_speed,
+            "prompt_exact": all_prompt_exact,
         },
     }
     print(json.dumps(output, indent=2))
