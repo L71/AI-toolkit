@@ -23,8 +23,8 @@ python ollama_threads_test.py --host llm-t01 --model qwen3.6:35b
 | `--host` | Yes | — | Ollama host (e.g. `llm-t01`) |
 | `--model` | No | — | Model name; omit to list models |
 | `--port` | No | `11434` | Ollama port |
-| `--threads` | No | `2 4 5 6 7 8` | Thread counts (supports ranges, e.g. `2 4 10-16`) |
-| `--iterations` | No | `5` | Number of tests per thread count |
+| `--threads` | No | `2 4 8` | Thread counts (supports ranges, e.g. `2 4 10-16`) |
+| `--iterations` | No | `3` | Number of tests per thread count |
 | `--prompt` | No | `"what is 2 ** 2 ?"` | Prompt to use |
 
 ## Examples

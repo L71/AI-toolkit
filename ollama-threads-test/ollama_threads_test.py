@@ -54,9 +54,9 @@ def main():
     parser.add_argument("--host", required=True, help="Ollama host (e.g. llm-t01)")
     parser.add_argument("--model", help="Model name (e.g. qwen3.6:35b)")
     parser.add_argument("--port", type=int, default=11434, help="Ollama port (default: 11434)")
-    parser.add_argument("--threads", nargs="+", default=[2, 4, 5, 6, 7, 8],
+    parser.add_argument("--threads", nargs="+", default=[2, 4, 8],
                         help="Thread counts to test, supports ranges (e.g. 2 4 6 10-16)")
-    parser.add_argument("--iterations", type=int, default=5,
+    parser.add_argument("--iterations", type=int, default=3,
                         help="Number of tests per thread count (default: 5)")
     parser.add_argument("--prompt", default="what is 2 ** 2 ?",
                         help="Prompt to use (default: 'what is 2 ** 2 ?')")
@@ -76,13 +76,13 @@ def main():
     options_default = {}
     post_header = {"Content-Type": "application/json"}
 
-    print(f"Running tests on endpoint {endpoint}\nModel {model}\nPrompt: {prompt}\n")
+    print(f"Running tests on endpoint {endpoint}\nModel {model}\n")
 
     results = {}  # dict of result dicts
 
     for no_threads in test_threads:  # loop for list of threads to test
         thr_dictkey = str(no_threads)
-        results[thr_dictkey] = {"pr_eval_rate": [], "eval_rate": []}  # empty dict entry for this type of threads
+        results[thr_dictkey] = {"pr_eval_rate": [], "eval_rate": [], "prompt_chars": [], "output_chars": [], "prompt_tokens": [], "output_tokens": []}  # empty dict entry for this type of threads
 
         print(f"threads: {no_threads:4d} x {no_of_tests:3d} tests... (please wait)")
 
@@ -96,14 +96,20 @@ def main():
                 if reply.status_code == 200:
 
                     r_data = reply.json()
-                    r_time = reply.elapsed.total_seconds()
                     r_prompt_eval_count = r_data['prompt_eval_count']
                     r_prompt_eval_duration = int(r_data['prompt_eval_duration']) / 1e9
                     r_eval_count = r_data['eval_count']
                     r_eval_duration = int(r_data['eval_duration']) / 1e9
+                    output_text = r_data.get('response', '')
 
                     results[thr_dictkey]['pr_eval_rate'].append(r_prompt_eval_count / r_prompt_eval_duration)
                     results[thr_dictkey]['eval_rate'].append(r_eval_count / r_eval_duration)
+                    results[thr_dictkey]['prompt_chars'].append(len(prompt))
+                    results[thr_dictkey]['output_chars'].append(len(output_text))
+                    results[thr_dictkey]['prompt_tokens'].append(r_prompt_eval_count)
+                    results[thr_dictkey]['output_tokens'].append(r_eval_count)
+                    print(f"  Test {test_no + 1}: prompt: {len(prompt)} chars ({r_prompt_eval_count} tokens)")
+                    print(f"  -> output: {len(output_text)} chars ({r_eval_count} tokens)  prompt eval rate: {r_prompt_eval_count / r_prompt_eval_duration:6.2f} t/s  eval rate: {r_eval_count / r_eval_duration:6.2f} t/s")
                 else:
                     print(f"  Warning: Server returned status {reply.status_code} (test {test_no + 1}/{no_of_tests})")
             except requests.exceptions.ConnectionError:
@@ -115,22 +121,18 @@ def main():
             except requests.exceptions.RequestException as e:
                 print(f"  Error: {e}")
 
-        # Print progress after each thread count
-        data = results[thr_dictkey]
-        if data['pr_eval_rate']:
-            avg_pr_eval_rate = round(sum(data['pr_eval_rate']) / len(data['pr_eval_rate']), 2)
-            avg_eval_rate = round(sum(data['eval_rate']) / len(data['eval_rate']), 2)
-            print(f"  threads: {no_threads:4d}  tests: {no_of_tests:4d}  prompt eval rate: {avg_pr_eval_rate:6.2f} t/s  eval rate: {avg_eval_rate:6.2f} t/s\n")
-        else:
-            print(f"  threads: {no_threads:4d}  No successful responses.\n")
-
+    print()
     print("Final averages for tests:")
     for threads, data in results.items():
         no_threads = int(threads)
         if data['pr_eval_rate']:
             avg_pr_eval_rate = round(sum(data['pr_eval_rate']) / len(data['pr_eval_rate']), 2)
             avg_eval_rate = round(sum(data['eval_rate']) / len(data['eval_rate']), 2)
-            print(f"  threads: {no_threads:4d}  tests: {no_of_tests:4d}  prompt eval rate: {avg_pr_eval_rate:6.2f} t/s  eval rate: {avg_eval_rate:6.2f} t/s")
+            avg_prompt_chars = round(sum(data['prompt_chars']) / len(data['prompt_chars']))
+            avg_output_chars = round(sum(data['output_chars']) / len(data['output_chars']))
+            avg_prompt_tokens = round(sum(data['prompt_tokens']) / len(data['prompt_tokens']))
+            avg_output_tokens = round(sum(data['output_tokens']) / len(data['output_tokens']))
+            print(f"  threads: {no_threads:4d}  tests: {no_of_tests:4d}  prompt: {avg_prompt_chars} chars ({avg_prompt_tokens} tokens)  output: {avg_output_chars} chars ({avg_output_tokens} tokens)  prompt eval rate: {avg_pr_eval_rate:6.2f} t/s  eval rate: {avg_eval_rate:6.2f} t/s")
         else:
             print(f"  threads: {no_threads:4d}  No successful responses.")
 
