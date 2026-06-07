@@ -208,7 +208,7 @@ optimizations in this guide.
 - Check `dmesg` for memory allocation failures alongside the timeout
 
 **Model output garbled after ring reset:**
-- The GPU recovered but llama-server may be in an inconsistent state
+- The GPU recovered but the inference server may be in an inconsistent state
 - Restart Ollama: `sudo systemctl restart ollama`
 
 **Ollama not offloading to GPU:**
