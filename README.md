@@ -25,6 +25,11 @@ Built using Qwen3.6-27B running on oMLX.
 ### ollama-threads-test
 
 A script initially written to test Ollama behaviour with different numbers of CPU threads when running without GPU and in a VM.
-Later updated with proper argument parsing and other fixes using Qwen3.6. 
+Later updated with proper argument parsing and other fixes using Qwen3.6.
 
 It reports the approximate prompt evaluation performance in addition to reporting token generation speed.
+
+
+### howtos-docs-notes
+
+What the headings says :-)
