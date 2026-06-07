@@ -25,13 +25,13 @@ from the OS regardless of whether the GPU is using it.
 
 ## Target hardware
 
-A Lenovo ThinkCentre M75q Tiny G2 PC with an AMD 4650GE CPU+GPU, 64GB of memory and running Ubuntu 26.04.
+A Lenovo ThinkCentre M75q Tiny G2 with AMD 4650GE APU, 64GB RAM, and Ubuntu 26.04.
 
-This is not hardware that is very well suited to running LLMs. Even so, applying the configuration in this document and running a recent Ollama version with Vulkan GPU acceleration produces Qwen3.6-35B (a 35B A3B MoE model) prefill speed close to 100 t/s on long prompts and 14-14.5 t/s on generation. Gemma4-26B (a 26B A4B MoE model) also gives similar numbers, though slightly slower on generation.
+This hardware is not particularly well suited to running LLMs. Applying the configuration in this document and running a recent Ollama version with Vulkan GPU acceleration achieves prefill speeds of ~100 t/s on long prompts and 14–14.5 t/s on generation for Qwen3.6-35B (a 35B-parameter MoE model with 3B active parameters). Gemma4-26B (a 26B A4B MoE model) also gives similar numbers, though slightly slower on generation.
 
-The "unified memory" popularized by Apple and others is actually present on this AMD hardware too — the GPU can access pretty much all the RAM in the PC if configured to do so. As mentioned above, the default settings limit this to 50% of RAM; this guide describes how to increase it significantly. Up to 56GB GPU memory pool (out of 64) seems to work fine. Some memory must always be available for the OS.
+The "unified memory" popularized by Apple and others is actually present on this AMD hardware too — the GPU can access pretty much all the RAM in the PC if configured to do so. As mentioned above, the default settings limit this to 50% of RAM; this guide describes how to increase it significantly. Up to 56GiB GPU memory (out of 64) seems to work fine and this configuration allows both Qwen3.6-35B and Gemma4-26B to be loaded at the same time. Note that some memory must always be available for the OS.
 
-If testing similar hardware with less memory, make sure both memory channels are populated since token generation is almost completely dependent on memory bandwidth.
+If testing similar hardware with less memory, make sure both memory channels are populated with DIMMs since token generation is almost completely dependent on memory bandwidth.
 
 ---
 
@@ -53,7 +53,7 @@ The TTM limit is expressed in **4KB pages**. For 48GB:
 48 × 1024 × 1024 / 4 = 12582912 pages
 ```
 
-Also, with larger memory mappings, GPU compute jobs (particularly LLM prefill passes)
+With larger memory mappings, GPU compute jobs (particularly LLM prefill passes)
 may take longer than the default 10-second timeout, causing spurious ring resets
 and inference crashes. We fix this with another line in the same config file.
 
@@ -78,7 +78,7 @@ sudo update-initramfs -u
 sudo reboot
 ```
 
-After this, running this command should report the expected amount of GTT memory.
+After this, the following command should report the expected GTT memory:
 ```bash
 sudo dmesg | grep -i "amdgpu" | grep -iE "gtt|vram"
 ```
@@ -118,15 +118,15 @@ w /sys/kernel/mm/transparent_hugepage/defrag - - - - defer+madvise
 
 Install Ollama according to https://ollama.com/download
 
-Make sure to use a recent version, ie 0.30.x or later.
+Make sure to use a recent version, 0.30.x or later.
 
-Also have a look at the page describing using Vulkan acceleration on Linux and follow their recommendations:
+Also follow the Vulkan setup instructions here:
 https://docs.ollama.com/gpu#vulkan-gpu-support
 
 
 Create a systemd override to adjust relevant Ollama settings:
 
-Tip: running `sudo systemctl edit ollama.service` will open an editor, create the file and reload as needed.
+Running `sudo systemctl edit ollama.service` will open an editor. After saving, the service is reloaded automatically.
 
 
 ```bash
@@ -176,7 +176,7 @@ cat /sys/kernel/mm/transparent_hugepage/enabled
 cat /sys/kernel/mm/transparent_hugepage/defrag
 ```
 
-The `ollama ps` command should report 100% GPU use when models are loaded - if they fit in GTT memory.
+The `ollama ps` command should report 100% GPU use when models are loaded — if they fit within GTT memory.
 
 The `radeontop` utility can be used to see GPU resource usage in real-time.
 
@@ -214,4 +214,4 @@ optimizations in this guide.
 **Ollama not offloading to GPU:**
 - Run `OLLAMA_DEBUG=1 ollama serve` and check for `layers offloaded` in output
 - Confirm Vulkan is working: `vulkaninfo --summary 2>/dev/null | grep -i "amd\|vega"`
-- Ensure Ollama user (likely `ollama`) is in `render` and `video` groups: `sudo usermod -aG render,video $USER`
+- Ensure your user is in `render` and `video` groups: `sudo usermod -aG render,video $USER`
