@@ -130,13 +130,13 @@ Create a systemd override to adjust relevant Ollama settings:
 sudo mkdir -p /etc/systemd/system/ollama.service.d
 sudo tee /etc/systemd/system/ollama.service.d/override.conf << 'EOF'
 [Service]
-Environment="OLLAMA_HOST=0.0.0.0"           # if serving via local LAN
-Environment="OLLAMA_CONTEXT_LENGTH=131072"  # adjust to your use case
+Environment="OLLAMA_HOST=0.0.0.0"
+Environment="OLLAMA_CONTEXT_LENGTH=131072"
 Environment="OLLAMA_KEEP_ALIVE=-1"
 Environment="OLLAMA_FLASH_ATTENTION=1"
 Environment="OLLAMA_KV_CACHE_TYPE=q8_0"
-Environment="OLLAMA_IGPU_ENABLE=1"          # enable integrated GPUs
-Environment="OLLAMA_VULKAN=1"               # use Vulkan
+Environment="OLLAMA_IGPU_ENABLE=1"
+Environment="OLLAMA_VULKAN=1"
 Environment="OLLAMA_MAX_LOADED_MODELS=3"
 Environment="OLLAMA_NUM_PARALLEL=1"
 EOF
@@ -147,10 +147,15 @@ sudo systemctl restart ollama
 
 | Setting | Effect |
 |---|---|
-| `OLLAMA_FLASH_ATTENTION=1` | Enables Flash Attention — reduces memory usage and speeds up long contexts. Required for KV cache quantization. |
-| `OLLAMA_KV_CACHE_TYPE=q8_0` | Quantizes KV cache to 8-bit integers, saving ~47% KV cache memory with negligible quality loss. |
-| `OLLAMA_KEEP_ALIVE=-1` | Models stay loaded indefinitely; eviction only when memory pressure requires it (LRU policy). |
-| `OLLAMA_NUM_PARALLEL=1` | Single inference stream; avoids pre-allocating resources for concurrent requests on a dedicated machine. |
+| `OLLAMA_HOST=0.0.0.0` | Binds the Ollama server to all network interfaces, enabling access from other machines on the local network. |
+| `OLLAMA_CONTEXT_LENGTH=131072` | Sets the maximum context length to 128K tokens. Increase or decrease based on your use case. |
+| `OLLAMA_KEEP_ALIVE=-1` | Models remain loaded indefinitely in memory; eviction occurs only under memory pressure via LRU policy. |
+| `OLLAMA_FLASH_ATTENTION=1` | Enables Flash Attention, reducing memory usage and accelerating long context processing. Required for KV cache quantization. |
+| `OLLAMA_KV_CACHE_TYPE=q8_0` | Quantizes the KV cache to 8-bit integers, saving ~50% KV cache memory with negligible quality loss. |
+| `OLLAMA_IGPU_ENABLE=1` | Enables the use of integrated GPUs for inference, which is disabled by default in Ollama. |
+| `OLLAMA_VULKAN=1` | Forces Vulkan as the compute backend, enabling GPU acceleration on AMD iGPUs. |
+| `OLLAMA_MAX_LOADED_MODELS=3` | Allows up to 3 models to be loaded in memory simultaneously, enabling model switching without reloading. |
+| `OLLAMA_NUM_PARALLEL=1` | Uses a single inference stream; avoids pre-allocating resources for concurrent requests on a dedicated machine. |
 
 ---
 
