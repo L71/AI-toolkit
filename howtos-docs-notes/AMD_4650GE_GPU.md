@@ -151,7 +151,7 @@ sudo systemctl restart ollama
 | `OLLAMA_CONTEXT_LENGTH=131072` | Sets the maximum context length to 128K tokens. Increase or decrease based on your use case. |
 | `OLLAMA_KEEP_ALIVE=-1` | Models remain loaded indefinitely in memory; eviction occurs only under memory pressure via LRU policy. |
 | `OLLAMA_FLASH_ATTENTION=1` | Enables Flash Attention, reducing memory usage and accelerating long context processing. Required for KV cache quantization. |
-| `OLLAMA_KV_CACHE_TYPE=q8_0` | Quantizes the KV cache to 8-bit integers, saving ~50% KV cache memory with negligible quality loss. |
+| `OLLAMA_KV_CACHE_TYPE=q8_0` | Quantizes the KV cache to 8-bit integers, saving ~50% KV cache memory with negligible quality loss. This seems to come at the cost of some very slight performance drop (~0.5% or so).|
 | `OLLAMA_IGPU_ENABLE=1` | Enables the use of integrated GPUs for inference, which is disabled by default in Ollama. |
 | `OLLAMA_VULKAN=1` | Forces Vulkan as the compute backend, enabling GPU acceleration on AMD iGPUs. |
 | `OLLAMA_MAX_LOADED_MODELS=3` | Allows up to 3 models to be loaded in memory simultaneously, enabling model switching without reloading. |
