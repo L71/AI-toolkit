@@ -2,7 +2,7 @@
 
 ## Background
 
-The AMD Ryzen 5 PRO 4650GE contains an integrated Vega 7 GPU (GCN5/gfx900
+The AMD Ryzen 5 PRO 4650GE contains an integrated Vega 7 GPU (GCN5/gfx90c
 architecture) that shares system RAM with the CPU. Unlike discrete GPUs with
 dedicated VRAM, the iGPU accesses system memory through two mechanisms:
 
@@ -27,15 +27,15 @@ from the OS regardless of whether the GPU is using it.
 
 A Lenovo ThinkCentre M75q Tiny G2 with AMD 4650GE APU, 64GB RAM, and Ubuntu 26.04.
 
-This hardware is not particularly well suited to running LLMs. Applying the configuration in this document and running a recent Ollama version with Vulkan GPU acceleration achieves prefill speeds of ~100 t/s on long prompts and 14–14.5 t/s on generation for Qwen3.6-35B (a 35B-parameter MoE model with 3B active parameters). Gemma4-26B (a 26B A4B MoE model) also gives similar numbers, though slightly slower on generation.
+This hardware is not particularly well suited to running LLMs. Applying the configuration in this document and running a recent Ollama version with Vulkan GPU acceleration achieves prefill speeds of ~100 tokens/s on long prompts and 14–14.5 tokens/s on generation for Qwen3.6-35B-A3B (a 35B-parameter MoE model with 3B active parameters) with a context length of 128K. Gemma 4 26B-A4B (26B total, 4B active parameters) also gives similar numbers, though slightly slower on generation.
 
-The "unified memory" popularized by Apple and others is actually present on this AMD hardware too — the GPU can access pretty much all the RAM in the PC if configured to do so. As mentioned above, the default settings limit this to 50% of RAM; this guide describes how to increase it significantly. Up to 56GiB GPU memory (out of 64) seems to work fine and this configuration allows both Qwen3.6-35B and Gemma4-26B to be loaded at the same time. Note that some memory must always be available for the OS.
+The "unified memory" popularized by Apple and others is effectively present on this AMD hardware too — the iGPU can address almost the entire system RAM when GTT is raised accordingly. As mentioned above, the default settings limit this to 50% of RAM; this guide describes how to increase it significantly. Up to 56 GiB GPU memory (out of 64) seems to work fine, and this configuration allows both Qwen3.6-35B-A3B and Gemma 4 26B-A4B to be loaded at the same time. Note that some memory must always remain available for the OS.
 
 If testing similar hardware with less memory, make sure both memory channels are populated with DIMMs since token generation is almost completely dependent on memory bandwidth.
 
 ---
 
-## Recommended firmware Settings
+## Recommended firmware settings
 
 Set the VRAM carveout (may be labelled "UMA Frame Buffer Size", "IGPU Memory",
 or similar) in the PC's UEFI setup or BIOS to the minimum your system allows. A large video RAM carveout reduces available GTT and provides no benefit for compute workloads.
@@ -63,13 +63,13 @@ Create a modprobe configuration file `/etc/modprobe.d/amdgpu.conf` with this con
 # increase GPU memory allocation limits and pool size (number of 4K memory pages)
 options ttm pages_limit=12582912 page_pool_size=12582912
 
-# increase CPU compute ring timeout (milliseconds, default 10000)
+# increase GPU compute ring timeout (milliseconds, default 10000)
 options amdgpu lockup_timeout=50000
 ```
 
 Both `pages_limit` (hard allocation ceiling) and `page_pool_size`
-(pre-allocated pool) should be set to the same value to avoid allocation
-failures.
+(pre-allocated pool) should be set to the same value so the pool can grow
+to the full ceiling without an intermediate cap.
 
 Rebuild initramfs to include the new configuration:
 
@@ -89,8 +89,8 @@ sudo dmesg | grep -i "amdgpu" | grep -iE "gtt|vram"
 
 With a 48GB GTT pool, the GPU's IOMMU must manage millions of 4KB page table
 entries during inference. Transparent Hugepages (THP) consolidates these into
-2MB pages, reducing TLB pressure by 512× and improving sustained memory
-throughput — particularly during prefill.
+2MB pages, reducing the PTE count by 512× and significantly lowering TLB
+pressure, improving sustained memory throughput — particularly during prefill.
 
 ### Immediate (no reboot required)
 
@@ -100,8 +100,8 @@ echo always | sudo tee /sys/kernel/mm/transparent_hugepage/shmem_enabled
 echo defer+madvise | sudo tee /sys/kernel/mm/transparent_hugepage/defrag
 ```
 
-`defer+madvise` for defrag avoids latency spikes from aggressive page
-compaction while still forming hugepages opportunistically.
+We use `defer+madvise` for defrag to avoid latency spikes from synchronous
+page compaction while still forming hugepages opportunistically.
 
 ### Persistent (survives reboot)
 
@@ -125,9 +125,6 @@ https://docs.ollama.com/gpu#vulkan-gpu-support
 
 
 Create a systemd override to adjust relevant Ollama settings:
-
-Running `sudo systemctl edit ollama.service` will open an editor. After saving, the service is reloaded automatically.
-
 
 ```bash
 sudo mkdir -p /etc/systemd/system/ollama.service.d
@@ -163,7 +160,7 @@ After all steps and a final reboot, verify the full configuration:
 
 ```bash
 # Check GTT and VRAM allocation
-dmesg | grep amdgpu | grep -iE "gtt|vram"
+sudo dmesg | grep amdgpu | grep -iE "gtt|vram"
 
 # Check TTM limit
 cat /sys/module/ttm/parameters/pages_limit
@@ -190,8 +187,8 @@ The `radeontop` utility can be used to see GPU resource usage in real-time.
 | GPU compute | ~1.8 TFLOPS FP16 (Rapid Packed Math) |
 | Token generation (7B Q4) | ~8–12 tokens/s |
 | Token generation (13B Q4) | ~4–6 tokens/s |
-| Prefill (short prompt) | ~20 t/s (fixed overhead dominates) |
-| Prefill (long prompt) | ~80–100 t/s (GPU better utilized) |
+| Prefill (short prompt) | ~20 tokens/s (fixed overhead dominates) |
+| Prefill (long prompt) | ~80–100 tokens/s (GPU better utilized) |
 
 Token generation speed is primarily limited by the 51 GB/s memory bandwidth
 ceiling — this is a fundamental hardware constraint that no software
@@ -212,6 +209,6 @@ optimizations in this guide.
 - Restart Ollama: `sudo systemctl restart ollama`
 
 **Ollama not offloading to GPU:**
-- Run `OLLAMA_DEBUG=1 ollama serve` and check for `layers offloaded` in output
+- Enable debug logging by adding `Environment="OLLAMA_DEBUG=1"` to the systemd override from Step 3, then `sudo systemctl restart ollama` and check `journalctl -u ollama -f` for `layers offloaded`
 - Confirm Vulkan is working: `vulkaninfo --summary 2>/dev/null | grep -i "amd\|vega"`
 - Ensure your user is in `render` and `video` groups: `sudo usermod -aG render,video $USER`
