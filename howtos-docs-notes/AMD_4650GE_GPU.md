@@ -27,7 +27,7 @@ from the OS regardless of whether the GPU is using it.
 
 A Lenovo ThinkCentre M75q Tiny G2 with AMD 4650GE APU, 64GB RAM, and Ubuntu 26.04.
 
-This hardware is not particularly well suited to running LLMs and performance will be unbearably slow unless limited to very small LLMs or using mixture-of-experts (MoE) models.
+This hardware is not particularly well suited to running LLMs and performance will be very slow unless limited to very small LLMs or using mixture-of-experts (MoE) models.
 
 Applying the configuration in this document and running a recent Ollama version with Vulkan GPU acceleration achieves prefill speeds of ~100 tokens/s on long prompts and ~14.5 tokens/s on generation for Qwen3.6-35B-A3B (a 35B-parameter MoE model with 3B active parameters) with a context length of 128K. Gemma 4 26B-A4B (26B total, 4B active parameters) also gives similar numbers.
 
@@ -153,7 +153,7 @@ sudo systemctl restart ollama
 | `OLLAMA_CONTEXT_LENGTH=131072` | Sets the maximum context length to 128K tokens. Increase or decrease based on your use case. |
 | `OLLAMA_KEEP_ALIVE=-1` | Models remain loaded indefinitely in memory; eviction occurs only under memory pressure via LRU policy. |
 | `OLLAMA_FLASH_ATTENTION=1` | Enables Flash Attention, reducing memory usage and accelerating long context processing. Required for KV cache quantization. |
-| `OLLAMA_KV_CACHE_TYPE=q8_0` | Quantizes the KV cache to 8-bit integers, saving ~50% KV cache memory with negligible quality loss. This may result in a negligible performance drop (approx. 0.5%).|
+| `OLLAMA_KV_CACHE_TYPE=q8_0` | Quantizes the KV cache to 8-bit integers, saving ~50% KV cache memory with negligible quality loss. This may result in a small performance drop (approx. 0.5%).|
 | `OLLAMA_IGPU_ENABLE=1` | Enables the use of integrated GPUs for inference, which is disabled by default in Ollama. |
 | `OLLAMA_VULKAN=1` | Forces Vulkan as the compute backend, enabling GPU acceleration on AMD iGPUs. |
 | `OLLAMA_MAX_LOADED_MODELS=3` | Allows up to 3 models to be loaded in memory simultaneously, enabling model switching without reloading. |
