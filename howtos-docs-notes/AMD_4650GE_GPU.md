@@ -116,7 +116,14 @@ w /sys/kernel/mm/transparent_hugepage/defrag - - - - defer+madvise
 
 ---
 
-## Step 3: Configure Ollama
+## Step 3: Install Vulkan dependencies
+
+On Ubuntu 26.04 server install the `vulkan-tools` package. This will pull in all necessary dependencies.
+
+
+---
+
+## Step 4: Configure Ollama
 
 Install Ollama according to https://ollama.com/download
 
@@ -136,7 +143,7 @@ Environment="OLLAMA_HOST=0.0.0.0"
 Environment="OLLAMA_CONTEXT_LENGTH=131072"
 Environment="OLLAMA_KEEP_ALIVE=-1"
 Environment="OLLAMA_FLASH_ATTENTION=1"
-Environment="OLLAMA_KV_CACHE_TYPE=q8_0"
+# Environment="OLLAMA_KV_CACHE_TYPE=q8_0"
 Environment="OLLAMA_IGPU_ENABLE=1"
 Environment="OLLAMA_VULKAN=1"
 Environment="OLLAMA_MAX_LOADED_MODELS=3"
@@ -153,7 +160,7 @@ sudo systemctl restart ollama
 | `OLLAMA_CONTEXT_LENGTH=131072` | Sets the maximum context length to 128K tokens. Increase or decrease based on your use case. |
 | `OLLAMA_KEEP_ALIVE=-1` | Models remain loaded indefinitely in memory; eviction occurs only under memory pressure via LRU policy. |
 | `OLLAMA_FLASH_ATTENTION=1` | Enables Flash Attention, reducing memory usage and accelerating long context processing. Required for KV cache quantization. |
-| `OLLAMA_KV_CACHE_TYPE=q8_0` | Quantizes the KV cache to 8-bit integers, saving ~50% KV cache memory with negligible quality loss. This may result in a small performance drop (approx. 0.5%).|
+| `OLLAMA_KV_CACHE_TYPE=q8_0` | Quantizes the KV cache to 8-bit integers, saving ~50% KV cache memory with negligible quality loss. This may result in a significant performance drop depending on use case and context size.|
 | `OLLAMA_IGPU_ENABLE=1` | Enables the use of integrated GPUs for inference, which is disabled by default in Ollama. |
 | `OLLAMA_VULKAN=1` | Forces Vulkan as the compute backend, enabling GPU acceleration on AMD iGPUs. |
 | `OLLAMA_MAX_LOADED_MODELS=3` | Allows up to 3 models to be loaded in memory simultaneously, enabling model switching without reloading. |
