@@ -54,8 +54,9 @@ def main():
     parser.add_argument("--host", required=True, help="Ollama host (e.g. llm-t01)")
     parser.add_argument("--model", help="Model name (e.g. qwen3.6:35b)")
     parser.add_argument("--port", type=int, default=11434, help="Ollama port (default: 11434)")
-    parser.add_argument("--threads", nargs="+", default=[2, 4, 8],
-                        help="Thread counts to test, supports ranges (e.g. 2 4 6 10-16)")
+    parser.add_argument("--threads", nargs="+", default=None,
+                        help="Thread counts to test, supports ranges (e.g. 2 4 6 10-16). "
+                             "If omitted, uses the server default.")
     parser.add_argument("--iterations", type=int, default=3,
                         help="Number of tests per thread count (default: 5)")
     parser.add_argument("--prompt", default="what is 2 ** 2 ?",
@@ -67,7 +68,13 @@ def main():
         list_models(args.host, args.port)
         return
 
-    test_threads = parse_threads(args.threads)
+    if args.threads is None:
+        server_default_used = True
+        print("Warning: --threads not specified, using the server's default thread count.")
+        print()
+        test_threads = None
+    else:
+        test_threads = parse_threads(args.threads)
 
     endpoint = f"http://{args.host}:{args.port}/api/generate"
     model = args.model
@@ -80,17 +87,31 @@ def main():
 
     results = {}  # dict of result dicts
 
+    # If --threads was not specified, wrap None in a special sentinel for single-pass treatment
+    if test_threads is None:
+        test_threads = [None]
+
     for no_threads in test_threads:  # loop for list of threads to test
-        thr_dictkey = str(no_threads)
+        if no_threads is None:
+            thr_dictkey = "server default"
+        else:
+            thr_dictkey = str(no_threads)
+        
         results[thr_dictkey] = {"pr_eval_rate": [], "eval_rate": [], "prompt_chars": [], "output_chars": [], "prompt_tokens": [], "output_tokens": []}  # empty dict entry for this type of threads
 
-        print(f"threads: {no_threads:4d} x {no_of_tests:3d} tests... (please wait)")
+        if no_threads is None:
+            print(f"threads: server default x {no_of_tests:3d} tests... (please wait)")
+        else:
+            print(f"threads: {no_threads:4d} x {no_of_tests:3d} tests... (please wait)")
 
         for test_no in range(0, no_of_tests):
 
             # prompt = f"{test_no} * {test_no} is equal to ?"
-            post_data = {"model": model, "prompt": prompt, "stream": False,
-                         "options": options_default | {'num_thread': no_threads}}
+            if no_threads is None:
+                post_data = {"model": model, "prompt": prompt, "stream": False}
+            else:
+                post_data = {"model": model, "prompt": prompt, "stream": False,
+                             "options": options_default | {'num_thread': no_threads}}
             try:
                 reply = requests.post(endpoint, data=json.dumps(post_data), headers=post_header)
                 if reply.status_code == 200:
@@ -124,17 +145,26 @@ def main():
     print()
     print("Final averages for tests:")
     for threads, data in results.items():
-        no_threads = int(threads)
         if data['pr_eval_rate']:
+            if threads == "server default":
+                no_threads_str = "server default"
+            else:
+                no_threads = int(threads)
+                no_threads_str = f"{no_threads:4d}"
             avg_pr_eval_rate = round(sum(data['pr_eval_rate']) / len(data['pr_eval_rate']), 2)
             avg_eval_rate = round(sum(data['eval_rate']) / len(data['eval_rate']), 2)
             avg_prompt_chars = round(sum(data['prompt_chars']) / len(data['prompt_chars']))
             avg_output_chars = round(sum(data['output_chars']) / len(data['output_chars']))
             avg_prompt_tokens = round(sum(data['prompt_tokens']) / len(data['prompt_tokens']))
             avg_output_tokens = round(sum(data['output_tokens']) / len(data['output_tokens']))
-            print(f"  threads: {no_threads:4d}  tests: {no_of_tests:4d}  prompt: {avg_prompt_chars} chars ({avg_prompt_tokens} tokens)  output: {avg_output_chars} chars ({avg_output_tokens} tokens)  prompt eval rate: {avg_pr_eval_rate:6.2f} t/s  eval rate: {avg_eval_rate:6.2f} t/s")
+            print(f"  threads: {no_threads_str}  tests: {no_of_tests:4d}  prompt: {avg_prompt_chars} chars ({avg_prompt_tokens} tokens)  output: {avg_output_chars} chars ({avg_output_tokens} tokens)  prompt eval rate: {avg_pr_eval_rate:6.2f} t/s  eval rate: {avg_eval_rate:6.2f} t/s")
         else:
-            print(f"  threads: {no_threads:4d}  No successful responses.")
+            if threads == "server default":
+                no_threads_str = "server default"
+            else:
+                no_threads = int(threads)
+                no_threads_str = f"{no_threads:4d}"
+            print(f"  threads: {no_threads_str}  No successful responses.")
 
 
 if __name__ == "__main__":

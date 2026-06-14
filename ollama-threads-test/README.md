@@ -23,7 +23,7 @@ python ollama_threads_test.py --host llm-t01 --model qwen3.6:35b
 | `--host` | Yes | — | Ollama host (e.g. `llm-t01`) |
 | `--model` | No | — | Model name; omit to list models |
 | `--port` | No | `11434` | Ollama port |
-| `--threads` | No | `2 4 8` | Thread counts (supports ranges, e.g. `2 4 10-16`) |
+| `--threads` | No | server default | Thread counts (supports ranges, e.g. `2 4 10-16`). Omit to use the server default (a warning is printed). |
 | `--iterations` | No | `3` | Number of tests per thread count |
 | `--prompt` | No | `"what is 2 ** 2 ?"` | Prompt to use |
 
@@ -39,6 +39,12 @@ Test a range of thread counts:
 
 ```bash
 python ollama_threads_test.py --host llm-t01 --model qwen3:4b --threads 2 4 10-16 --iterations 3
+```
+
+Use the server's default thread count:
+
+```bash
+python ollama_threads_test.py --host llm-t01 --model qwen3:4b --iterations 5
 ```
 
 List models on a custom port:
