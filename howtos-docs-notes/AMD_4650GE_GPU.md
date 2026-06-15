@@ -29,9 +29,9 @@ A Lenovo ThinkCentre M75q Tiny G2 with AMD 4650GE APU, 64GB RAM, and Ubuntu 26.0
 
 This hardware is not particularly well suited to running LLMs and performance will be very slow unless limited to very small LLMs or using mixture-of-experts (MoE) models.
 
-Applying the configuration in this document and running a recent Ollama version with Vulkan GPU acceleration achieves prefill speeds of ~100 tokens/s on long prompts and ~14.5 tokens/s on generation for Qwen3.6-35B-A3B (a 35B-parameter MoE model with 3B active parameters) with a context length of 128K. Gemma 4 26B-A4B (26B total, 4B active parameters) also gives similar numbers.
+Applying the configuration in this document and running a recent Ollama version with Vulkan GPU acceleration achieves prefill speeds of ~110 tokens/s on long prompts and ~14 tokens/s on generation for Qwen3.6-35B-A3B (a 35B-parameter MoE model with 3B active parameters) with a context length of 256K. Gemma4-26B-A4B (26B total, 4B active parameters) also gives similar numbers.
 
-The "unified memory" popularized by Apple and others is effectively present on this AMD hardware too — the iGPU can address almost the entire system RAM when GTT is raised accordingly. As mentioned above, the default settings limit this to 50% of RAM; this guide describes how to increase it significantly. Up to 56 GiB GPU memory (on a 64GB system) seems to work fine, and this configuration allows both Qwen3.6-35B-A3B and Gemma 4 26B-A4B to be loaded at the same time. Note that some memory must always remain available for the context KV cache and the OS.
+The "unified memory" popularized by Apple and others is effectively present on this AMD hardware too — the iGPU can address almost the entire system RAM when GTT is raised accordingly. As mentioned above, the default settings limit this to 50% of RAM; this guide describes how to increase it significantly. Up to 60 GiB GPU memory (on a 64GB system) seems to work fine. Note that some memory must always remain available for the context KV cache and the OS.
 
 If testing similar hardware with less memory, make sure both memory channels are populated with DIMMs since token generation is almost completely dependent on memory bandwidth.
 
@@ -123,15 +123,16 @@ On Ubuntu 26.04 server install the `vulkan-tools` package. This will pull in all
 
 ---
 
-## Step 4: Configure Ollama
+## Step 4: Install and configure Ollama
 
 Install Ollama according to https://ollama.com/download
 
-Make sure to use a recent version, 0.30.x or later.
+Make sure to use a recent version, 0.30 or later.
 
 Also follow the Vulkan setup instructions here:
 https://docs.ollama.com/gpu#vulkan-gpu-support
 
+If you use the Ollama install script it may also download a package with ROCm libraries for the alternative GPU acceleration system on AMD; this does not appear to work well with the 4650GE APU.
 
 Create a systemd override to adjust relevant Ollama settings:
 
@@ -157,7 +158,7 @@ sudo systemctl restart ollama
 | Setting | Effect |
 |---|---|
 | `OLLAMA_HOST=0.0.0.0` | Binds the Ollama server to all network interfaces, enabling access from other machines on the local network. |
-| `OLLAMA_CONTEXT_LENGTH=131072` | Sets the maximum context length to 128K tokens. Increase or decrease based on your use case. |
+| `OLLAMA_CONTEXT_LENGTH=262144` | Sets the maximum context length to 256K tokens. Adjust based on model support, memory availablility and your use case. |
 | `OLLAMA_KEEP_ALIVE=-1` | Models remain loaded indefinitely in memory; eviction occurs only under memory pressure via LRU policy. |
 | `OLLAMA_FLASH_ATTENTION=1` | Enables Flash Attention, reducing memory usage and accelerating long context processing. Required for KV cache quantization. |
 | `OLLAMA_KV_CACHE_TYPE=q8_0` | Quantizes the KV cache to 8-bit integers, saving ~50% KV cache memory with negligible quality loss. This may result in a significant performance drop depending on use case and context size.|
@@ -187,7 +188,7 @@ cat /sys/kernel/mm/transparent_hugepage/enabled
 cat /sys/kernel/mm/transparent_hugepage/defrag
 ```
 
-The `ollama ps` command should report 100% GPU use when models are loaded — if they fit within GTT memory.
+The `ollama ps` command should report 100% GPU use when models are loaded — if they fit within available GTT memory.
 
 The `radeontop` utility can be used to see GPU resource usage in real-time.
 
@@ -202,7 +203,7 @@ The `radeontop` utility can be used to see GPU resource usage in real-time.
 | Token generation (7B Q4) | ~8–12 tokens/s |
 | Token generation (13B Q4) | ~4–6 tokens/s |
 | Prefill (short prompt) | ~20 tokens/s (fixed overhead dominates) |
-| Prefill (long prompt) | ~80–100 tokens/s (GPU better utilized) |
+| Prefill (long prompt) | ~80–110 tokens/s (GPU better utilized) |
 
 Token generation speed is primarily limited by the 51 GB/s memory bandwidth
 ceiling — this is a fundamental hardware constraint that no software
@@ -211,7 +212,38 @@ optimizations in this guide.
 
 ---
 
+**Some results from `ollama_threads_test.py`**
+
+Model `qwen3.6-35B-A3B`, with different context sizes and KV quantization
+
+For comparison a few CPU-only measurements are included; all others are Vulkan GPU accelerated.
+
+| Context | Prompt size | Memory use | Prefill t/s | Generation t/s |
+|---|---|---|---|---|
+| 64K fp16 | 27k chars / 6926 tokens | 24G | 110 | 13.5 |
+| 64K fp16 | 2.6k chars / 740 tokens | 24G | 99 | 14.2 |
+| 256K fp16 | 27k chars / 6926 tokens | 29G | 113 | 13.5 |
+| 256K fp16 | 2.6k chars / 740 tokens | 29G | 102 | 14.3 |
+| 64K q8_0 | 27k chars / 6926 tokens | 24G | 101 | 13.1 |
+| 64K q8_0 | 2.6k chars / 740 tokens | 24G | 99 | 14 |
+| 256K q8_0 | 27k chars / 6926 tokens | 27G | 106 | 13.3 |
+| 256K q8_0 | 2.6k chars / 740 tokens | 27G | 101 | 14.2 |
+| 256K fp16 100% CPU | 27k chars / 6926 tokens | 30G | 45 | 7.4 |
+| 256K fp16 100% CPU | 2.6k chars / 740 tokens | 30G | 52 | 13.3 |
+
+---
+
+**System power usage**
+
+The test computer power usage while idle is about 5-6W. Max power use observed while running LLMs GPU-accelerated seems to be about 45W. Max use when running CPU-only was 55W (also with noticeably more fan noise than when running GPU-accelerated). These measurements may not be precise.
+
+
+---
+
 ## Troubleshooting
+
+**See Ollama server logs**
+- Run `journalctl -u ollama.service`, add `-f` to see live updates.
 
 **Still seeing `ring comp_1.2.0 timeout`:**
 - Verify `lockup_timeout=50000` is active
@@ -223,6 +255,6 @@ optimizations in this guide.
 - Restart Ollama: `sudo systemctl restart ollama`
 
 **Ollama not offloading to GPU:**
-- Enable debug logging by adding `Environment="OLLAMA_DEBUG=1"` to the systemd override from Step 3, then `sudo systemctl restart ollama` and check `journalctl -u ollama -f` for `layers offloaded`
+- Enable debug logging by adding `Environment="OLLAMA_DEBUG=1"` to the systemd override from Step 4, then `sudo systemctl restart ollama` and check `journalctl -u ollama -f` for `layers offloaded`
 - Confirm Vulkan is working: `vulkaninfo --summary 2>/dev/null | grep -i "amd\|vega"`
 - Ensure your user is in `render` and `video` groups: `sudo usermod -aG render,video $USER`
