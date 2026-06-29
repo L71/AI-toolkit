@@ -239,19 +239,21 @@ Recent Ollama versions can utilize multiple-token prediction when generating tok
 
 The default setting of the enabling parameter, `draft_num_predict=4`, actually makes it slower on this hardware. A setting of 1 seems to give the best effect.
 
-Create an Ollama Modelfile named `Modelfile-qwen3.6:35b-mtp-code` with the updated parameters.
+Create the following Ollama Modelfile:
 
-    # ollama create qwen3.6:35b-mtp-code -f ./Modelfile-qwen3.6:35b-mtp-code
-    #
     FROM qwen3.6:35b-a3b-mtp-q4_K_M
+
+    # Enable MTP
+    PARAMETER draft_num_predict 1
+
+    # Tuning for coding (remove if not applicable)
     PARAMETER temperature 0.5
     PARAMETER top_p 0.95
     PARAMETER top_k 20
     PARAMETER repeat_penalty 1
     PARAMETER presence_penalty 0
-    PARAMETER draft_num_predict 1
 
-Run the `ollama create` command to create a model with the updated parameter. Some coding related tuning also included here; adjust parameters, model and file names to match your use case.
+Run the `ollama create qwen3.6:35b-mtp-code -f Modelfile` command to create a model with the updated parameters.
 
 
 ---
