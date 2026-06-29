@@ -31,7 +31,7 @@ This hardware is not particularly well suited to running LLMs and performance wi
 
 Applying the configuration in this document and running a recent Ollama version with Vulkan GPU acceleration achieves prefill speeds of ~110 tokens/s on long prompts and ~14 tokens/s on generation for Qwen3.6-35B-A3B (a 35B-parameter MoE model with 3B active parameters) with a context length of 256K. Gemma4-26B-A4B (26B total, 4B active parameters) also gives similar numbers.
 
-The "unified memory" popularized by Apple and others is effectively present on this AMD hardware too — the iGPU can address almost the entire system RAM when GTT is raised accordingly. As mentioned above, the default settings limit this to 50% of RAM; this guide describes how to increase it significantly. Up to 60 GiB GPU memory (on a 64GB system) seems to work fine. Note that some memory must always remain available for the context KV cache and the OS.
+The "unified memory" popularized by Apple and others is effectively present on this AMD hardware too — the iGPU can address almost the entire system RAM when GTT is raised accordingly. As mentioned above, the default settings limit this to 50% of RAM; this guide describes how to increase it significantly. Up to 60 GiB GTT memory (on a 64GB system) seems to work fine. Note that allocating too much GTT can starve the OS and CPU, potentially causing system instability.
 
 If testing similar hardware with less memory, make sure both memory channels are populated with DIMMs since token generation is almost completely dependent on memory bandwidth.
 
@@ -91,8 +91,8 @@ sudo dmesg | grep -i "amdgpu" | grep -iE "gtt|vram"
 
 With a 48GB GTT pool, the GPU's IOMMU must manage millions of 4KB page table
 entries during inference. Transparent Hugepages (THP) consolidates these into
-2MB pages, reducing the PTE count by 512× and significantly lowering TLB
-pressure, improving sustained memory throughput — particularly during prefill.
+2MB pages, reducing the page table entry count by 512× and significantly lowering
+TLB pressure, improving sustained memory throughput — particularly during prefill.
 
 ### Immediate (no reboot required)
 
@@ -132,7 +132,7 @@ Make sure to use a recent version, 0.30 or later.
 Also follow the Vulkan setup instructions here:
 https://docs.ollama.com/gpu#vulkan-gpu-support
 
-If you use the Ollama install script it may also download a package with ROCm libraries for the alternative GPU acceleration system on AMD; this does not appear to work well with the 4650GE APU.
+If you use the Ollama install script it may also download a package with ROCm libraries for the alternative GPU acceleration system on AMD. ROCm unfortunately does not support the 4650GE APU.
 
 Create a systemd override to adjust relevant Ollama settings:
 
@@ -141,7 +141,7 @@ sudo mkdir -p /etc/systemd/system/ollama.service.d
 sudo tee /etc/systemd/system/ollama.service.d/override.conf << 'EOF'
 [Service]
 Environment="OLLAMA_HOST=0.0.0.0"
-Environment="OLLAMA_CONTEXT_LENGTH=131072"
+Environment="OLLAMA_CONTEXT_LENGTH=262144"
 Environment="OLLAMA_KEEP_ALIVE=-1"
 Environment="OLLAMA_FLASH_ATTENTION=1"
 # Environment="OLLAMA_KV_CACHE_TYPE=q8_0"
@@ -158,7 +158,7 @@ sudo systemctl restart ollama
 | Setting | Effect |
 |---|---|
 | `OLLAMA_HOST=0.0.0.0` | Binds the Ollama server to all network interfaces, enabling access from other machines on the local network. |
-| `OLLAMA_CONTEXT_LENGTH=262144` | Sets the maximum context length to 256K tokens. Adjust based on model support, memory availablility and your use case. |
+| `OLLAMA_CONTEXT_LENGTH=262144` | Sets the maximum context length to 256K tokens. Adjust based on model support, memory availability and your use case. |
 | `OLLAMA_KEEP_ALIVE=-1` | Models remain loaded indefinitely in memory; eviction occurs only under memory pressure via LRU policy. |
 | `OLLAMA_FLASH_ATTENTION=1` | Enables Flash Attention, reducing memory usage and accelerating long context processing. Required for KV cache quantization. |
 | `OLLAMA_KV_CACHE_TYPE=q8_0` | Quantizes the KV cache to 8-bit integers, saving ~50% KV cache memory with negligible quality loss. This may result in a significant performance drop depending on use case and context size.|
@@ -230,6 +230,29 @@ For comparison a few CPU-only measurements are included; all others are Vulkan G
 | 256K q8_0 | 2.6k chars / 740 tokens | 27G | 101 | 14.2 |
 | 256K fp16 100% CPU | 27k chars / 6926 tokens | 30G | 45 | 7.4 |
 | 256K fp16 100% CPU | 2.6k chars / 740 tokens | 30G | 52 | 13.3 |
+
+---
+
+**MTP (Multiple Token Prediction)**
+
+Recent Ollama versions can utilize multiple-token prediction when generating tokens. The actual effect varies but generation speed using the example model below can increase by up to 20% when correctly configured at a slight cost to prefill speed. This requires the use of a model with MTP info embedded in it, like `qwen3.6:35b-a3b-mtp-q4_K_M` available from the Ollama registry.
+
+The default setting of the enabling parameter, `draft_num_predict=4`, actually makes it slower on this hardware. A setting of 1 seems to give the best effect.
+
+Here is an example correcting this using an Ollama Modelfile (here called `Modelfile-qwen3.6:35b-mtp-code`)
+
+    # ollama create qwen3.6:35b-mtp-code -f ./Modelfile-qwen3.6:35b-mtp-code
+    #
+    FROM qwen3.6:35b-a3b-mtp-q4_K_M
+    PARAMETER temperature 0.5
+    PARAMETER top_p 0.95
+    PARAMETER top_k 20
+    PARAMETER repeat_penalty 1
+    PARAMETER presence_penalty 0
+    PARAMETER draft_num_predict 1
+
+Run the `ollama create` command to create a model with the updated parameter. Some coding related tuning also included here; remove tuning parameters that don't apply to your use case.
+
 
 ---
 
