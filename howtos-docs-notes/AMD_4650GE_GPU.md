@@ -35,6 +35,21 @@ The "unified memory" popularized by Apple and others is effectively present on t
 
 If testing similar hardware with less memory, make sure both memory channels are populated with DIMMs since token generation is almost completely dependent on memory bandwidth.
 
+**Addendum about newer hardware**
+
+The same setup procedures have also been performed on a ThinkCentre M75q G5, 8700GE APU, 64GB, also running Ubuntu 26.04 with the same results. Vulkan acceleration works fine. ROCm acceleration _should_ also work on this hardware but appears complicated to setup and it has not been tested.
+
+Some performance numbers from this machine, using qwen3.6-35b, MTP enabled, Ollama KV cache quantization q8_0, context 256k.
+
+|Processor|Prompt|Prefill t/s|Generation t/s|
+|---|---|---|---|
+|CPU|"Hi there!"|~65|~27|
+|CPU|27k chars/6926 tokens|~57|~16.5|
+|GPU/Vulkan|"Hi there!"|~21|~27|
+|GPU/Vulkan|2.6k chars/740 tokens|~232|~24|
+|GPU/Vulkan|27k chars/6926 tokens|~266|~22|
+
+
 ---
 
 ## Recommended firmware settings
