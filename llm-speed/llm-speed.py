@@ -352,9 +352,11 @@ def measure_generation_speed(
                     trunc_mark = " \u26a0 truncated" if finish_reason == "length" else ""
                     stream_mark = " (buffered)" if iter_poor_streaming else ""
                     if use_streaming:
-                        print(f"\u2713 {output_tokens} tok | {tps:.1f} t/s | TTFT: {ttft_str} | Total: {format_duration(elapsed)}{trunc_mark}{stream_mark}{prompt_timer}")
+                        print(f"\u2713 {output_tokens} tok | {tps:.1f} t/s | TTFT: {ttft_str}")
+                        print(f"         | Total: {format_duration(elapsed)}{trunc_mark}{stream_mark}{prompt_timer}")
                     else:
-                        print(f"\u2713 {output_tokens} tok | {tps:.1f} t/s | Total: {format_duration(elapsed)}{trunc_mark}{prompt_timer}")
+                        print(f"\u2713 {output_tokens} tok | {tps:.1f} t/s | Total: {format_duration(elapsed)}")
+                        print(f"         {trunc_mark}{stream_mark}{prompt_timer}".lstrip())
 
                 total_input_tokens += input_tokens
                 total_output_tokens += output_tokens
