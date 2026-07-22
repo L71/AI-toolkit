@@ -208,9 +208,12 @@ Max tokens per generation: 128
 
 --- Prompt 1/5 ---
 Input length: 32 chars
-  Iteration 1/3... ✓ 42 tok | 161.5 t/s | TTFT: 50ms | Total: 310ms
-  Iteration 2/3... ✓ 42 tok | 165.2 t/s | TTFT: 45ms | Total: 300ms
-  Iteration 3/3... ✓ 42 tok | 158.8 t/s | TTFT: 55ms | Total: 320ms
+  Iteration 1/3... ✓ 42 tok | 161.5 t/s | TTFT: 50ms
+           | Total: 310ms
+  Iteration 2/3... ✓ 42 tok | 165.2 t/s | TTFT: 45ms
+           | Total: 300ms
+  Iteration 3/3... ✓ 42 tok | 158.8 t/s | TTFT: 55ms
+           | Total: 320ms
 
 ...
 
@@ -240,6 +243,8 @@ Total measurements: 5
 - **No models loaded**: Informative message about the empty model list
 - **Truncated output**: Warning when generation hits `max_tokens` limit
 - **Missing prompt file**: Clear error with file path if `--prompt-file` or `--prompt-list` points to a nonexistent or unreadable file
+- **Token count unavailable**: Warning when the API returns zero for both input and output token counts — values used for throughput calculations are estimates, not exact
+- **Mixed prompt metrics**: When some iterations have exact API prompt timing and others use TTFT-based estimation, the per-prompt summary shows both values separately
 
 ## Notes
 
