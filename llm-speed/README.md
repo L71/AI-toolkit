@@ -256,6 +256,14 @@ Total measurements: 5
 - A warmup round runs automatically before benchmarks; disable with `--no-warmup`
 - Results may vary based on system resources and model complexity
 
+### Reference to `ollama-threads-test`
+
+For benchmarking Ollama with different `num_thread` settings using the Ollama-specific `/api/generate` endpoint, see the sibling `ollama-threads-test` script. That tool's `prompt_eval_rate` and `eval_rate` are measured from server-side `prompt_eval_duration` and `eval_duration` counters, which are more precise than the client-end measurements of this tool. Because `llm-speed` uses the OpenAI-compatible API for cross-backend support, its numbers for Ollama will differ from those reported by `ollama-threads-test`.
+
+### Backend API and comparison with `ollama-threads-test`
+
+This tool uses the OpenAI-compatible `/v1/chat/completions` endpoint, which is the common API across Ollama, llama.cpp, and oMLX. For Ollama it does **not** use the native `/api/generate` endpoint used by the sibling `ollama-threads-test` script. The `/api/generate` endpoint reports Ollama-internal metrics (`prompt_eval_duration`, `eval_duration`) that are pure server-side nanosecond counts. The OpenAI-compatible API reports `prompt_time_ms` in its `usage` object, which `llm-speed` uses for prompt processing speed when available. When `prompt_time_ms` is not provided (this is common with llama.cpp and oMLX, and also happens with Ollama in some cases), `llm-speed` falls back to estimating prompt speed from TTFT, which is an end-to-end measurement that includes network latency. Even when `prompt_time_ms` is reported, the two endpoints may measure timing differently, so their numbers will not match exactly. Use `ollama-threads-test` when you need server-side precision for tuning Ollama's thread count, and `llm-speed` when you want cross-backend comparison.
+
 ### Streaming vs Non-Streaming Throughput
 
 In **streaming mode**, the reported tokens/second measures **pure generation throughput**
