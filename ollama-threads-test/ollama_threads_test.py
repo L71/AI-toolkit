@@ -58,7 +58,7 @@ def main():
                         help="Thread counts to test, supports ranges (e.g. 2 4 6 10-16). "
                              "If omitted, uses the server default.")
     parser.add_argument("--iterations", type=int, default=3,
-                        help="Number of tests per thread count (default: 5)")
+                        help="Number of tests per thread count (default: 3)")
     parser.add_argument("--prompt", default="what is 2 ** 2 ?",
                         help="Prompt to use (default: 'what is 2 ** 2 ?')")
     args = parser.parse_args()
@@ -96,7 +96,7 @@ def main():
             thr_dictkey = "server default"
         else:
             thr_dictkey = str(no_threads)
-        
+
         results[thr_dictkey] = {"pr_eval_rate": [], "eval_rate": [], "prompt_chars": [], "output_chars": [], "prompt_tokens": [], "output_tokens": []}  # empty dict entry for this type of threads
 
         if no_threads is None:

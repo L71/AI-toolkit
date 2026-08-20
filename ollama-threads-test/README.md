@@ -10,6 +10,11 @@ This tool uses Ollama's native `/api/generate` endpoint, which returns Ollama-sp
 
 The `llm-speed` script in the sibling `llm-speed` directory uses the OpenAI-compatible `/v1/chat/completions` endpoint instead of the native Ollama API. As a result, it cannot access Ollama's `prompt_eval_duration` and `eval_duration` fields directly. When benchmarking Ollama, `llm-speed` instead reports prompt processing speed using either the `prompt_time_ms` field from the usage object or (when unavailable) a TTFT-based estimation. Because the two tools use different endpoints and measure timing in different ways, their reported numbers will not match exactly. Use `ollama-threads-test` when you need fine-grained tuning of Ollama's thread count, and `llm-speed` when you want to compare performance across backends (Ollama, llama.cpp, oMLX).
 
+## Requirements
+
+* Python3, built and tested mostly on 3.13, 3.9 and later _may_ work.
+* The `requests` library
+
 ## Usage
 
 List available models (no `--model` required):
