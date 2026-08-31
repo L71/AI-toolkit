@@ -64,10 +64,11 @@ or similar) in the PC's UEFI setup or BIOS to the minimum your system allows. A 
 GTT is the address space; TTM (Translation Table Manager) is the kernel's
 actual page allocation budget.
 
-The TTM limit is expressed in **4KB pages**. For 48GB:
+The TTM limit is expressed in **4KB pages**. Examples:
 
 ```
-48 × 1024 × 1024 / 4 = 12582912 pages
+48 GB:  48 × 1024 × 1024 / 4 = 12582912 pages
+60 GB:  60 × 1024 × 1024 / 4 = 15728640 pages
 ```
 
 With larger memory mappings, GPU compute jobs (particularly LLM prefill passes)
@@ -78,7 +79,7 @@ Create a modprobe configuration file `/etc/modprobe.d/amdgpu.conf` with this con
 
 ```bash
 # increase GPU memory allocation limits and pool size (number of 4K memory pages)
-options ttm pages_limit=12582912 page_pool_size=12582912
+options ttm pages_limit=15728640 page_pool_size=15728640
 
 # increase GPU compute ring timeout (milliseconds, default 10000)
 options amdgpu lockup_timeout=50000
@@ -104,7 +105,9 @@ sudo dmesg | grep -i "amdgpu" | grep -iE "gtt|vram"
 
 ## Step 2: Enable Transparent Hugepages
 
-With a 48GB GTT pool, the GPU's IOMMU must manage millions of 4KB page table
+NOTE: consider this step optional if you run Ollama with 100% GPU acceleration.
+
+With a very large memory pool, the processor must manage millions of 4KB page table
 entries during inference. Transparent Hugepages (THP) consolidates these into
 2MB pages, reducing the page table entry count by 512× and significantly lowering
 TLB pressure, improving sustained memory throughput — particularly during prefill.
